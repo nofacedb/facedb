@@ -204,15 +204,8 @@ func (ffs *Scheduler) GetFaces(imgBuff []byte) ([]Face, error) {
 	return faces, nil
 }
 
-// FrameFaces puts every face, found in image, to green box.
-func FrameFaces(img image.Image, faces []Face) error {
-	r := uint8(0x6B)
-	g := uint8(0xF3)
-	b := uint8(0x08)
-	a := uint8(0xFF)
-
-	c := color.RGBA{r, g, b, a}
-
+// FrameFaces puts every face, found in image, to colored box.
+func FrameFaces(img image.Image, faces []Face, c color.Color) error {
 	type changeable interface {
 		Set(x, y int, c color.Color)
 	}

@@ -3,10 +3,40 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "+LLCGUJPO8kORvuF6hfAuSsEpw4=",
+			"path": "github.com/h2non/filetype",
+			"revision": "2248f2e2f77cd8cf9694216e3f9589d71005de37",
+			"revisionTime": "2019-02-10T10:29:54Z"
+		},
+		{
+			"checksumSHA1": "FP+5ecwApEi78leDzVdFvjVfPuA=",
+			"path": "github.com/h2non/filetype/matchers",
+			"revision": "2248f2e2f77cd8cf9694216e3f9589d71005de37",
+			"revisionTime": "2019-02-10T10:29:54Z"
+		},
+		{
+			"checksumSHA1": "HsC2rnGsGLqkRoRlqJ6FWtlQRX0=",
+			"path": "github.com/h2non/filetype/matchers/isobmff",
+			"revision": "2248f2e2f77cd8cf9694216e3f9589d71005de37",
+			"revisionTime": "2019-02-10T10:29:54Z"
+		},
+		{
+			"checksumSHA1": "1vWo7o3JuTZ0aUXOswjybr8UZM0=",
+			"path": "github.com/h2non/filetype/types",
+			"revision": "2248f2e2f77cd8cf9694216e3f9589d71005de37",
+			"revisionTime": "2019-02-10T10:29:54Z"
+		},
+		{
 			"checksumSHA1": "0H/VjT8w1CB702qWpbYMqr65Mf0=",
 			"path": "github.com/pkg/errors",
 			"revision": "ffb6e22f01932bf7ac35e0bad9be11f01d1c8685",
 			"revisionTime": "2019-01-09T06:16:28Z"
+		},
+		{
+			"checksumSHA1": "cXokCvyFg5J/JpxYNKB5JSqJH7g=",
+			"path": "golang.org/x/image/bmp",
+			"revision": "6d32002ffd7577f23673706728e1c510698cecb1",
+			"revisionTime": "2019-04-28T16:51:35Z"
 		},
 		{
 			"checksumSHA1": "QqDq2x8XOU7IoOR98Cx1eiV5QY8=",

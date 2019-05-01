@@ -18,7 +18,7 @@ type CArgs struct {
 // ParseCArgs parser command line arguments and returns them as *CArgs.
 func ParseCArgs() *CArgs {
 	cfgName := ""
-	flag.StringVar(&cfgName, "config", "config.yaml", "path to config file")
+	flag.StringVar(&cfgName, "config", "config.yaml", "path to yaml config file")
 	printVersion := false
 	flag.BoolVar(&printVersion, "version", false, "print FACEDB version")
 	flag.Parse()

@@ -9,7 +9,7 @@ http_server:
   read_timeout_ms: 100000
   # immed_resp specifies, if server should return answer only
   # after image processed (false) or immediately (true).
-  immed_resp: true
+  immed_resp: false
   # key_path is path to TLS key (if empty, server will use HTTP).
   key_path: ""
   # crt_path is path to TLS cert (if empty, server will use HTTP).
