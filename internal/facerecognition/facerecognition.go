@@ -204,16 +204,38 @@ func (ffs *Scheduler) GetFaces(imgBuff []byte) ([]Face, error) {
 	return faces, nil
 }
 
+// ChangeableImage is changeable cover over Golang image.Image.
+type ChangeableImage struct {
+	image.Image
+	changedPixels map[image.Point]color.Color
+}
+
+// CreateChangeableImage returns new changeable image from Golang image.Image.
+func CreateChangeableImage(img image.Image) *ChangeableImage {
+	// Not using parameters becaues of embedded structure.
+	return &ChangeableImage{img, map[image.Point]color.Color{}}
+}
+
+// Set changes image pixel color.
+func (cimg *ChangeableImage) Set(x, y int, c color.Color) {
+	cimg.changedPixels[image.Point{x, y}] = c
+}
+
+// At returns image pixel color.
+func (cimg *ChangeableImage) At(x, y int) color.Color {
+	if c := cimg.changedPixels[image.Point{x, y}]; c != nil {
+		return c
+	}
+	return cimg.Image.At(x, y)
+}
+
 // FrameFaces puts every face, found in image, to colored box.
-func FrameFaces(img image.Image, faces []Face, c color.Color) error {
+func FrameFaces(img image.Image, faces []Face, c color.Color) *ChangeableImage {
 	type changeable interface {
 		Set(x, y int, c color.Color)
 	}
 
-	cimg, ok := img.(changeable)
-	if !ok {
-		return fmt.Errorf("image is readonly")
-	}
+	cimg := CreateChangeableImage(img)
 
 	for _, face := range faces {
 		faceBox := face.FaceBox
@@ -235,5 +257,5 @@ func FrameFaces(img image.Image, faces []Face, c color.Color) error {
 		}
 	}
 
-	return nil
+	return cimg
 }

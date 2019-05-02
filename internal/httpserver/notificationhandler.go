@@ -76,12 +76,10 @@ func processImage(rest *restAPI, imgBuff []byte) error {
 	b := uint8(0x08)
 	a := uint8(0xFF)
 	c := color.RGBA{r, g, b, a}
-	if err := facerecognition.FrameFaces(img, faces, c); err != nil {
-		return errors.Wrap(err, "unable to put faces to colored boxes")
-	}
+	cimg := facerecognition.FrameFaces(img, faces, c)
 
 	out, _ := os.Create("/home/mikhail/kek.png")
-	png.Encode(out, img)
+	png.Encode(out, cimg)
 
 	return nil
 }
