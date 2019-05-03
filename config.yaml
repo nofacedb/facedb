@@ -1,8 +1,8 @@
-# http_server contains config for HTTP(S) server.
+# http_server contains config for HTTP server.
 http_server:
   # server_addr is IP:PORT or path to UNIX socket
   # on which server will listen.
-  addr : "0.0.0.0:8000"
+  addr : "0.0.0.0:10000"
   # write_timeout is timeout for HTTP(S) write for addrs_in.
   write_timeout_ms: 100000
   # read_timeout is timeout for HTTP(S) read for addrs_in.
@@ -20,7 +20,7 @@ http_server:
 face_recognition:
   # List of face processors IP:PORTs or paths to UNIX sockets.
   face_processors:
-    - "unix://home.mikhail.sock.sock"
+    - "http://127.0.0.1:8000"
   # Size of facial features vector.
   facial_features_size: 128
   # use GPU for finding faces in image (gives better quality).
@@ -33,3 +33,9 @@ face_recognition:
   jitters: 1
   # timeout_ms it timeout for HTTP(S) request to faceprocessor.
   timeout_ms: 100000
+
+# ControlPanelCFG contains config for control panels.
+control_panels:
+  # List on control panels IP:PORTs or paths to UNIX sockets
+  control_panels:
+    - "http://127.0.0.1:10228"

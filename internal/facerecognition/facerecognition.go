@@ -2,7 +2,8 @@ package facerecognition
 
 import (
 	"bytes"
-	"fmt"
+	"encoding/base64"
+	"encoding/json"
 	"image"
 	"image/color"
 	"io/ioutil"
@@ -10,17 +11,11 @@ import (
 	"net/http"
 	"sync"
 	"time"
-	"unsafe"
 
 	"strings"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
 	"github.com/pkg/errors"
-)
-
-const (
-	unixSock = byte(0)
-	inetSock = byte(1)
 )
 
 // Scheduler controls work of face recognition process.
@@ -89,39 +84,38 @@ func CreateScheduler(cfg cfgparser.FaceRecognitionCFG) *Scheduler {
 	}
 }
 
-const (
-	uint64Var  = uint64(0)
-	float64Var = float64(0.0)
-)
-
-const (
-	uint64Size  = uint64(unsafe.Sizeof(uint64Var))
-	float64Size = uint64(unsafe.Sizeof(float64Var))
-)
-
-func readUint64(buff []byte, shift uint64) uint64 {
-	return *(*uint64)(unsafe.Pointer(&buff[shift]))
-}
-
-func readFloat64(buff []byte, shift uint64) float64 {
-	return *(*float64)(unsafe.Pointer(&buff[shift]))
-}
-
 // FaceBox struct represents coordinates of one face in image.
-type FaceBox struct {
-	Top    uint64
-	Right  uint64
-	Bottom uint64
-	Left   uint64
+type FaceBox []uint64
+
+// Top returns top coordinate.
+func (fb FaceBox) Top() uint64 {
+	return fb[0]
 }
 
-// FacialFeatures datatype represents facial features vector of one face.
-type FacialFeatures []float64
+// Right returns top coordinate.
+func (fb FaceBox) Right() uint64 {
+	return fb[1]
+}
+
+// Bottom returns top coordinate.
+func (fb FaceBox) Bottom() uint64 {
+	return fb[2]
+}
+
+// Left returns top coordinate.
+func (fb FaceBox) Left() uint64 {
+	return fb[3]
+}
+
+// Faces struct contains faces data, got from faceprocessor.
+type Faces struct {
+	Faces []Face `json:"faces"`
+}
 
 // Face struct is a pair of FaceBox and FacialFeatures.
 type Face struct {
-	FaceBox        FaceBox
-	FacialFeatures FacialFeatures
+	Box            FaceBox   `json:"box"`
+	FacialFeatures []float64 `json:"features"`
 }
 
 // BytesToImage converts bytes buffer to Golang image.
@@ -129,33 +123,44 @@ func BytesToImage(imgBuff []byte) (image.Image, string, error) {
 	return image.Decode(bytes.NewReader(imgBuff))
 }
 
-// GetFaces returns slice of Faces from image buffer.
-func (ffs *Scheduler) GetFaces(imgBuff []byte) ([]Face, error) {
-	ffs.mu.RLock()
-	idx := ffs.idx % uint64(len(ffs.cfg.FaceProcessors))
-	url := ffs.cfg.FaceProcessors[idx]
-	var cli *http.Client
-	if ffs.clients[idx] != nil {
-		cli = ffs.clients[idx]
-	} else {
-		ffs.idx++
-		cli = ffs.defaultClient
-	}
-	ffs.mu.RUnlock()
+// ImageTask contains task for faceprocessor.
+type ImageTask struct {
+	ImgBuff string `json:"img_buff"`
+}
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(imgBuff))
+// GetFaces returns Faces from image buffer.
+func (frs *Scheduler) GetFaces(imgBuff []byte) (*Faces, error) {
+	frs.mu.RLock()
+	idx := frs.idx % uint64(len(frs.cfg.FaceProcessors))
+	url := frs.cfg.FaceProcessors[idx]
+	var cli *http.Client
+	if frs.clients[idx] != nil {
+		cli = frs.clients[idx]
+	} else {
+		frs.idx++
+		cli = frs.defaultClient
+	}
+	frs.mu.RUnlock()
+
+	base64ImgBuff := make([]byte, base64.StdEncoding.EncodedLen(len(imgBuff)))
+	base64.StdEncoding.Encode(base64ImgBuff, imgBuff)
+	data, err := json.Marshal(ImageTask{ImgBuff: string(base64ImgBuff)})
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to marshal image buffer to JSON")
+	}
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create http-request")
 	}
 
 	resp, err := cli.Do(req)
 	if err != nil {
-		ffs.mu.Lock()
-		if ffs.cfg.FaceProcessors[idx] == url {
-			ffs.cfg.FaceProcessors = append(ffs.cfg.FaceProcessors[:idx], ffs.cfg.FaceProcessors[idx+1:]...)
-			ffs.clients = append(ffs.clients[:idx], ffs.clients[idx+1:]...)
+		frs.mu.Lock()
+		if frs.cfg.FaceProcessors[idx] == url {
+			frs.cfg.FaceProcessors = append(frs.cfg.FaceProcessors[:idx], frs.cfg.FaceProcessors[idx+1:]...)
+			frs.clients = append(frs.clients[:idx], frs.clients[idx+1:]...)
 		}
-		ffs.mu.Unlock()
+		frs.mu.Unlock()
 
 		return nil, errors.Wrap(err, "unable to get response from faceprocessor")
 	}
@@ -165,40 +170,9 @@ func (ffs *Scheduler) GetFaces(imgBuff []byte) ([]Face, error) {
 		return nil, errors.Wrap(err, "unable to read response from body")
 	}
 
-	/*
-		Expected, that faces buff data file will be produced by script facerecognition.py,
-		placed in this directory.
-		Also it is expected that Go uint64 and float64 sizes and structures are similar to
-		Python numpy.uint64 and numpy.float64 on one machine.
-		It firstly stores all FaceBoxes (every FaceBox is sequence of 4 uint64 numbers),
-		and secondly - all FacialFeatures (every FacialFeatures is sequence of FacialFeaturesSize float64 numbers).
-		So number of faces if: nfaces := fsize / (4 * uint64Size + FaceFeaturesSize * float64Size).
-	*/
-
-	fbsz := 4 * uint64Size
-	ffsz := ffs.cfg.FacialFeaturesSize * float64Size
-	sz := fbsz + ffsz
-	nfaces := uint64(len(buff)) / sz
-	if uint64(len(buff))%sz != 0 {
-		return nil, fmt.Errorf("response body is corrupted")
-	}
-
-	faces := make([]Face, 0, nfaces)
-	for i := uint64(0); i < nfaces; i++ {
-		fb := FaceBox{
-			Top:    readUint64(buff, i*sz+0*uint64Size),
-			Right:  readUint64(buff, i*sz+1*uint64Size),
-			Bottom: readUint64(buff, i*sz+2*uint64Size),
-			Left:   readUint64(buff, i*sz+3*uint64Size),
-		}
-		ff := make([]float64, 0, sz)
-		for j := uint64(0); j < ffs.cfg.FacialFeaturesSize; j++ {
-			ff = append(ff, readFloat64(buff, i*sz+fbsz+j*float64Size))
-		}
-		faces = append(faces, Face{
-			FaceBox:        fb,
-			FacialFeatures: ff,
-		})
+	faces := &Faces{}
+	if err := json.Unmarshal(buff, faces); err != nil {
+		return nil, errors.Wrap(err, "unable to read faces array")
 	}
 
 	return faces, nil
@@ -230,30 +204,26 @@ func (cimg *ChangeableImage) At(x, y int) color.Color {
 }
 
 // FrameFaces puts every face, found in image, to colored box.
-func FrameFaces(img image.Image, faces []Face, c color.Color) *ChangeableImage {
-	type changeable interface {
-		Set(x, y int, c color.Color)
-	}
-
+func FrameFaces(img image.Image, faces *Faces, c color.Color) *ChangeableImage {
 	cimg := CreateChangeableImage(img)
 
-	for _, face := range faces {
-		faceBox := face.FaceBox
-		for j := faceBox.Left; j < faceBox.Right; j++ {
-			cimg.Set(int(j), int(faceBox.Bottom)-1, c)
-			cimg.Set(int(j), int(faceBox.Bottom), c)
-			cimg.Set(int(j), int(faceBox.Bottom)+1, c)
-			cimg.Set(int(j), int(faceBox.Top)-1, c)
-			cimg.Set(int(j), int(faceBox.Top), c)
-			cimg.Set(int(j), int(faceBox.Top)+1, c)
+	for _, face := range faces.Faces {
+		faceBox := face.Box
+		for j := faceBox.Left(); j < faceBox.Right(); j++ {
+			cimg.Set(int(j), int(faceBox.Bottom())-1, c)
+			cimg.Set(int(j), int(faceBox.Bottom()), c)
+			cimg.Set(int(j), int(faceBox.Bottom())+1, c)
+			cimg.Set(int(j), int(faceBox.Top())-1, c)
+			cimg.Set(int(j), int(faceBox.Top()), c)
+			cimg.Set(int(j), int(faceBox.Top())+1, c)
 		}
-		for j := faceBox.Top; j < faceBox.Bottom; j++ {
-			cimg.Set(int(faceBox.Left)-1, int(j), c)
-			cimg.Set(int(faceBox.Left), int(j), c)
-			cimg.Set(int(faceBox.Left)+1, int(j), c)
-			cimg.Set(int(faceBox.Right)-1, int(j), c)
-			cimg.Set(int(faceBox.Right), int(j), c)
-			cimg.Set(int(faceBox.Right)+1, int(j), c)
+		for j := faceBox.Top(); j < faceBox.Bottom(); j++ {
+			cimg.Set(int(faceBox.Left())-1, int(j), c)
+			cimg.Set(int(faceBox.Left()), int(j), c)
+			cimg.Set(int(faceBox.Left())+1, int(j), c)
+			cimg.Set(int(faceBox.Right())-1, int(j), c)
+			cimg.Set(int(faceBox.Right()), int(j), c)
+			cimg.Set(int(faceBox.Right())+1, int(j), c)
 		}
 	}
 

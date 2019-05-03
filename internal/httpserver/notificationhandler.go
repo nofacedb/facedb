@@ -66,7 +66,7 @@ func processImage(rest *restAPI, imgBuff []byte) error {
 		return errors.Wrap(err, "unable to read image from bytes buffer")
 	}
 
-	faces, err := rest.frsch.GetFaces(imgBuff)
+	faces, err := rest.frs.GetFaces(imgBuff)
 	if err != nil {
 		return err
 	}
@@ -78,8 +78,18 @@ func processImage(rest *restAPI, imgBuff []byte) error {
 	c := color.RGBA{r, g, b, a}
 	cimg := facerecognition.FrameFaces(img, faces, c)
 
-	out, _ := os.Create("/home/mikhail/kek.png")
-	png.Encode(out, cimg)
+	f, _ := os.Create("kek.png")
+	png.Encode(f, cimg)
+
+	buff := new(bytes.Buffer)
+	if err := jpeg.Encode(buff, cimg, nil); err != nil {
+		return errors.Wrap(err, "unable to encode image to bytes buffer")
+	}
+	faceBoxes := make([]facerecognition.FaceBox, 0, len(faces.Faces))
+	for _, face := range faces.Faces {
+		faceBoxes = append(faceBoxes, face.Box)
+	}
+	rest.cps.Notify(buff.Bytes(), faceBoxes)
 
 	return nil
 }

@@ -34,7 +34,7 @@ func ParseCArgs() *CArgs {
 	}
 }
 
-// HTTPServerCFG contains configuration parameters for HTTP Server.
+// HTTPServerCFG contains config for HTTP Server.
 type HTTPServerCFG struct {
 	Addr           string `yaml:"addr"`
 	WriteTimeoutMS int    `yaml:"write_timeout_ms"`
@@ -44,7 +44,7 @@ type HTTPServerCFG struct {
 	CrtPath        string `yaml:"crt_path"`
 }
 
-// FaceRecognitionCFG contains configuration parameters for face recognition engine.
+// FaceRecognitionCFG contains config for face recognition engine.
 type FaceRecognitionCFG struct {
 	FaceProcessors     []string `yaml:"face_processors"`
 	FacialFeaturesSize uint64   `yaml:"facial_features_size"`
@@ -54,10 +54,17 @@ type FaceRecognitionCFG struct {
 	TimeoutMS          int      `yaml:"timeout_ms"`
 }
 
-// CFG contains all configuration parameters for FACEDB server.
+// ControlPanelsCFG contains config for control panels.
+type ControlPanelsCFG struct {
+	ControlPanels []string `yaml:"control_panels"`
+	TimeoutMS     int      `yaml:"timeout_ms"`
+}
+
+// CFG contains config for FACEDB server.
 type CFG struct {
 	HTTPServerCFG      HTTPServerCFG      `yaml:"http_server"`
 	FaceRecognitionCFG FaceRecognitionCFG `yaml:"face_recognition"`
+	ControlPanelsCFG   ControlPanelsCFG   `yaml:"control_panels"`
 }
 
 // ReadCFG reads YAML configuration file and returns it as *CFG.

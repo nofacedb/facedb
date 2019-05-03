@@ -4,20 +4,24 @@ import (
 	"net/http"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
+	"github.com/nofacedb/facedb/internal/controlpanels"
 	"github.com/nofacedb/facedb/internal/facerecognition"
 )
 
 type restAPI struct {
 	immedResp bool
-	frsch     *facerecognition.Scheduler
+
+	frs *facerecognition.Scheduler
+	cps *controlpanels.Scheduler
 }
 
 func createRestAPI(cfg *cfgparser.CFG) (*restAPI, error) {
-	frsch := facerecognition.CreateScheduler(cfg.FaceRecognitionCFG)
-
+	frs := facerecognition.CreateScheduler(cfg.FaceRecognitionCFG)
+	cps := controlpanels.CreateScheduler(cfg.ControlPanelsCFG)
 	return &restAPI{
 		immedResp: cfg.HTTPServerCFG.ImmedResp,
-		frsch:     frsch,
+		frs:       frs,
+		cps:       cps,
 	}, nil
 }
 
