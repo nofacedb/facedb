@@ -44,6 +44,19 @@ type HTTPServerCFG struct {
 	CrtPath        string `yaml:"crt_path"`
 }
 
+// FaceStorageCFG contains config for facial features storage.
+type FaceStorageCFG struct {
+	Addr          string  `yaml:"addr"`
+	User          string  `yaml:"user"`
+	Passwd        string  `yaml:"passwd"`
+	NPing         int     `yaml:"n_ping"`
+	DefaultDB     string  `yaml:"default_db"`
+	WriteTimeoutS int     `yaml:"write_timeout_s"`
+	ReadTimeoutS  int     `yaml:"read_timeout_s"`
+	Debug         bool    `yaml:"debug"`
+	SineBoundary  float64 `yaml:"sine_boundary"`
+}
+
 // FaceRecognitionCFG contains config for face recognition engine.
 type FaceRecognitionCFG struct {
 	FaceProcessors     []string `yaml:"face_processors"`
@@ -64,6 +77,7 @@ type ControlPanelsCFG struct {
 type CFG struct {
 	HTTPServerCFG      HTTPServerCFG      `yaml:"http_server"`
 	FaceRecognitionCFG FaceRecognitionCFG `yaml:"face_recognition"`
+	FaceStorageCFG     FaceStorageCFG     `yaml:"face_storage"`
 	ControlPanelsCFG   ControlPanelsCFG   `yaml:"control_panels"`
 }
 

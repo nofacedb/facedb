@@ -9,7 +9,7 @@ http_server:
   read_timeout_ms: 100000
   # immed_resp specifies, if server should return answer only
   # after image processed (false) or immediately (true).
-  immed_resp: false
+  immed_resp: true
   # key_path is path to TLS key (if empty, server will use HTTP).
   key_path: ""
   # crt_path is path to TLS cert (if empty, server will use HTTP).
@@ -33,6 +33,28 @@ face_recognition:
   jitters: 1
   # timeout_ms it timeout for HTTP(S) request to faceprocessor.
   timeout_ms: 100000
+
+# face_storage contains config for facial features storage.
+face_storage:
+  # Address of ClickHouse database.
+  addr: "127.0.0.1:9000"
+  # ClickHouse user.
+  user: "default"
+  # ClickHouse user password.
+  passwd: "123456"
+  # n_ping is number of ping tries, when connecting to ClickHouse.
+  n_ping: 16
+  # default_db is default ClickHouse database.
+  default_db: "facedb"
+  # write_timeout_s is timeout for ClickHouse write.
+  write_timeout_s:
+  # read_timeout_s is timeout for ClickHouse read.
+  read_timeout_s: 10
+  # debug sets ClickHouse debug mode to true.
+  debug: false
+  # sine_boundary is boundary value of facial features vector coincidence
+  sine_boundary: 0.01
+  
 
 # ControlPanelCFG contains config for control panels.
 control_panels:
