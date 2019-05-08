@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/nofacedb/facedb/internal/controlpanels"
-	"github.com/nofacedb/facedb/internal/facedb"
 	"github.com/nofacedb/facedb/internal/facerecognition"
 	"github.com/nofacedb/facedb/internal/proto"
 	"github.com/pkg/errors"
@@ -68,34 +67,13 @@ func processPutFeaturesRequest(rest *restAPI, imgBuff []byte, faces []facerecogn
 	for _, face := range faces {
 		cob, err := rest.fs.SelectCOBByFF(face.FacialFeatures)
 		if err != nil {
-			fmt.Println()
-			fmt.Println()
-			fmt.Println()
 			fmt.Println(err)
 			return errors.Wrap(err, "unable to select control object by facial features vector from facedb")
 		}
-		if cob == nil {
-			facesData = append(facesData, controlpanels.FaceData{
-				ID:         facedb.UNKNOWNFIELD,
-				Box:        face.Box,
-				Name:       facedb.UNKNOWNFIELD,
-				Patronymic: facedb.UNKNOWNFIELD,
-				Surname:    facedb.UNKNOWNFIELD,
-				Passport:   facedb.UNKNOWNFIELD,
-				PhoneNum:   facedb.UNKNOWNFIELD,
-			})
-		} else {
-			facesData = append(facesData,
-				controlpanels.FaceData{
-					ID:         *cob.ID,
-					Box:        face.Box,
-					Name:       cob.Name,
-					Patronymic: cob.Patronymic,
-					Surname:    cob.Surname,
-					Passport:   cob.Passport,
-					PhoneNum:   cob.PhoneNum,
-				})
-		}
+		facesData = append(facesData, controlpanels.FaceData{
+			Box: face.Box,
+			COB: cob,
+		})
 		facialFeatures = append(facialFeatures, face.FacialFeatures)
 	}
 	newFacesData, immed, err := rest.cps.Notify(imgBuff, facesData, facialFeatures)

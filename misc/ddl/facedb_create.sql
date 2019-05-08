@@ -34,7 +34,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS  `facedb`.`embedded_facial_features`
 ENGINE = AggregatingMergeTree() ORDER BY `cob_id`
 AS SELECT
    `cob_id`,
-   avgArray(`ff`) AS `eff`
+   avgForEach(`ff`) AS `eff`
 FROM `facedb`.`facial_features`
 GROUP BY `cob_id`;
 

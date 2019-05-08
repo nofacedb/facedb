@@ -92,5 +92,7 @@ func ReadCFG(fname string) (*CFG, error) {
 		return nil, errors.Wrap(err, "unable to parse config file")
 	}
 
+	fmt.Println(cfg.FaceStorageCFG.SineBoundary)
+
 	return cfg, nil
 }

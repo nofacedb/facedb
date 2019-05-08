@@ -51,9 +51,9 @@ face_storage:
   # read_timeout_s is timeout for ClickHouse read.
   read_timeout_s: 10
   # debug sets ClickHouse debug mode to true.
-  debug: false
+  debug: true
   # sine_boundary is boundary value of facial features vector coincidence
-  sine_boundary: 0.01
+  sine_boundary: 0.1
   
 
 # ControlPanelCFG contains config for control panels.

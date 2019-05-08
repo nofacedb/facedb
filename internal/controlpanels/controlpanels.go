@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
+	"github.com/nofacedb/facedb/internal/facedb"
 	"github.com/nofacedb/facedb/internal/facerecognition"
 	"github.com/nofacedb/facedb/internal/proto"
 	"github.com/pkg/errors"
@@ -20,13 +21,8 @@ import (
 
 // FaceData ...
 type FaceData struct {
-	Box        facerecognition.FaceBox `json:"box"`
-	ID         string                  `json:"id"`
-	Name       string                  `json:"name"`
-	Patronymic string                  `json:"patronymic"`
-	Surname    string                  `json:"surname"`
-	Passport   string                  `json:"passport"`
-	PhoneNum   string                  `json:"phone_num"`
+	Box facerecognition.FaceBox `json:"box"`
+	COB facedb.COB              `json:"cob"`
 }
 
 // AwaitingKey is key for awaiting images.

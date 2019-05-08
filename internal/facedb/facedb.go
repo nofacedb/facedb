@@ -45,7 +45,8 @@ func CreateFaceStorage(cfg cfgparser.FaceStorageCFG) (*FaceStorage, error) {
 	}
 
 	return &FaceStorage{
-		db: db,
+		db:           db,
+		SineBoundary: cfg.SineBoundary,
 	}, nil
 }
 
@@ -63,22 +64,54 @@ const (
 
 // InsertCOBQuery ...
 const InsertCOBQuery = `
-INSERT INTO control_objects
+INSERT INTO
+    control_objects
     (ts, name, patronymic, surname, passport, sex, phone_num)
 VALUES
-    (?, ?, ?, ?, ?, ?, ?);`
+    (?, ?, ?, ?, ?, ?, ?);
+`
 
 // COB ...
 type COB struct {
-	ID         *string
+	ID         *string `json:"id"`
 	dbTS       *time.Time
 	TS         *time.Time
-	Name       string
-	Patronymic string
-	Surname    string
-	Passport   string
-	Sex        string
-	PhoneNum   string
+	Name       string `json:"name"`
+	Patronymic string `json:"patronymic"`
+	Surname    string `json:"surname"`
+	Passport   string `json:"passport"`
+	Sex        string `json:"sex"`
+	PhoneNum   string `json:"phone_num"`
+}
+
+// CreateUnknownCOB ...
+func CreateUnknownCOB() COB {
+	ID := UNKNOWNFIELD
+	return COB{
+		ID:         &ID,
+		Name:       UNKNOWNFIELD,
+		Patronymic: UNKNOWNFIELD,
+		Surname:    UNKNOWNFIELD,
+		Passport:   UNKNOWNFIELD,
+		Sex:        UNKNOWNSEX,
+		PhoneNum:   UNKNOWNFIELD,
+	}
+}
+
+// CmpCOBsByID ...
+func CmpCOBsByID(cob1, cob2 COB) bool {
+	return *(cob1.ID) == *(cob2.ID)
+}
+
+// CmpCOBsByAll ...
+func CmpCOBsByAll(cob1, cob2 COB) bool {
+	return (*(cob1.ID) == *(cob2.ID)) &&
+		(cob1.Name == cob2.Name) &&
+		(cob1.Patronymic == cob2.Patronymic) &&
+		(cob1.Surname == cob2.Surname) &&
+		(cob1.Passport == cob2.Passport) &&
+		(cob1.Sex == cob2.Sex) &&
+		(cob1.PhoneNum == cob2.PhoneNum)
 }
 
 // InsertCOB ...
@@ -119,19 +152,59 @@ func (fs *FaceStorage) InsertCOB(cobs []COB) error {
 	return nil
 }
 
+// SelectCOBByPassportQuery ...
+const SelectCOBByPassportQuery = `
+SELECT
+    control_objects.id, control_objects.ts, control_objects.name,
+    control_objects.patronymic, control_objects.surname, control_objects.passport,
+    control_objects.sex, control_objects.phone_num
+FROM
+    control_objects
+WHERE
+    (passport = ?);
+`
+
+// SelectCOBByPassport ...
+func (fs *FaceStorage) SelectCOBByPassport(passport string) (COB, error) {
+	rows, err := fs.db.Query(SelectCOBByPassportQuery,
+		passport,
+	)
+	if err != nil {
+		return COB{}, errors.Wrap(err, "unable to execute query")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		cob := COB{
+			ID: new(string),
+			TS: new(time.Time),
+		}
+		if err := rows.Scan(cob.ID, cob.TS,
+			&(cob.Name), &(cob.Patronymic), &(cob.Surname),
+			&(cob.Passport), &(cob.Sex), &(cob.PhoneNum)); err != nil {
+			return COB{}, errors.Wrap(err, "unable to unmarshal query result")
+		}
+		return cob, nil
+	}
+
+	return CreateUnknownCOB(), nil
+}
+
 // InsertFFQuery ...
 const InsertFFQuery = `
-INSERT INTO facial_features
+INSERT INTO
+    facial_features
     (cob_id, img_id, fb, ff)
 VALUES
-    (?, ?, ?, ?);`
+    (?, ?, ?, ?);
+`
 
 // FF ...
 type FF struct {
 	ID    *string
 	COBID string
 	IMGID string
-	FB    []uint64
+	Box   []uint64
 	FF    []float64
 }
 
@@ -146,12 +219,11 @@ func (fs *FaceStorage) InsertFF(ffs []FF) error {
 		return errors.Wrap(err, "unable to prepare InsertCOBQuery statemet")
 	}
 	defer stmt.Close()
-
 	for _, ff := range ffs {
 		if _, err := stmt.Exec(
-			ff.COBID,
-			ff.IMGID,
-			clickhouse.Array(ff.FB),
+			clickhouse.UUID(ff.COBID),
+			clickhouse.UUID(ff.IMGID),
+			clickhouse.Array(ff.Box),
 			clickhouse.Array(ff.FF),
 		); err != nil {
 			return errors.Wrap(err, "unable to execute part of bulk write transaction. Rollbacking")
@@ -214,27 +286,47 @@ the more similar the vectors, the closer the sine of the angle between them to z
 
 // SelectCOBByFFQuery ...
 const SelectCOBByFFQuery = `
-SELECT control_objects.id, control_objects.ts, control_objects.name,
-       control_objects.patronymic, control_objects.surname, control_objects.passport,
-       control_objects.sex, control_objects.phone_num
-    FROM control_objects JOIN embedded_facial_features
-    ON control_objects.id = embedded_facial_features.cob_id
-    WHERE ((1 -
-            pow(arraySum(arrayMap((x, y) -> (x * y), array(embedded_facial_features.eff), array(?))), 2) /
-            (arraySum(arrayMap(x -> x * x, array(?))) *
-             arraySum(arrayMap(x -> x * x, array(embedded_facial_features.eff))))) < ?)
+SELECT
+    cob_id, ts,
+    name, patronymic, surname,
+    passport, sex, phone_num
+FROM
+(
+    SELECT
+        control_objects.id AS cob_id,
+        control_objects.ts AS ts,
+        control_objects.name AS name,
+        control_objects.patronymic AS patronymic,
+        control_objects.surname AS surname,
+        control_objects.passport AS passport,
+        control_objects.sex AS sex,
+        control_objects.phone_num AS phone_num
+    FROM
+       control_objects
+) JOIN
+(
+    SELECT
+        cob_id, avgForEach(ff) AS eff
+    FROM
+        facial_features
+    GROUP BY cob_id
+) USING cob_id
+WHERE
+    ((1 - pow(arraySum(arrayMap((x, y) -> (x * y), eff, array(?))), 2) / 
+          (arraySum(arrayMap(x -> x * x, array(?))) *
+           arraySum(arrayMap(x -> x * x, eff)))) < ?)
     LIMIT 1
 `
 
 // SelectCOBByFF ...
-func (fs *FaceStorage) SelectCOBByFF(ff []float64) (*COB, error) {
+func (fs *FaceStorage) SelectCOBByFF(ff []float64) (COB, error) {
 	rows, err := fs.db.Query(SelectCOBByFFQuery,
 		clickhouse.Array(ff),
 		clickhouse.Array(ff),
 		fs.SineBoundary,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to execute query")
+		return COB{}, errors.Wrap(err, "unable to execute query")
 	}
 	defer rows.Close()
 
@@ -246,10 +338,10 @@ func (fs *FaceStorage) SelectCOBByFF(ff []float64) (*COB, error) {
 		if err := rows.Scan(cob.ID, cob.TS,
 			&(cob.Name), &(cob.Patronymic), &(cob.Surname),
 			&(cob.Passport), &(cob.Sex), &(cob.PhoneNum)); err != nil {
-			return nil, errors.Wrap(err, "unable to unmarshal query result")
+			return COB{}, errors.Wrap(err, "unable to unmarshal query result")
 		}
-		return &cob, nil
+		return cob, nil
 	}
 
-	return nil, nil
+	return CreateUnknownCOB(), nil
 }
