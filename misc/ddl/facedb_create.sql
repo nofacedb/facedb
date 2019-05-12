@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS `facedb`.`imgs`
 (
     `id`       UUID DEFAULT generateUUIDv4(), -- surrogate key.
     `ts`       DateTime,
+    `path`     String,
     `face_ids` Array(UUID)                    -- facedb.facial_features FKs.
 ) ENGINE = MergeTree()
   ORDER BY `id`;

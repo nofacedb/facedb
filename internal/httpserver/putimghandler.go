@@ -9,7 +9,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (rest *restAPI) putImageHandler(resp http.ResponseWriter, req *http.Request) {
+const apiV1PutImg = "/api/v1/put_img"
+
+func (rest *restAPI) putImgHandler(resp http.ResponseWriter, req *http.Request) {
 	if req.Method != "PUT" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return

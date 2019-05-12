@@ -1,8 +1,7 @@
-# http_server contains config for HTTP server.
 http_server:
   # server_addr is IP:PORT or path to UNIX socket
   # on which server will listen.
-  addr : "0.0.0.0:10000"
+  socket : "0.0.0.0:10000"
   # write_timeout is timeout for HTTP(S) write for addrs_in.
   write_timeout_ms: 100000
   # read_timeout is timeout for HTTP(S) read for addrs_in.
@@ -15,26 +14,13 @@ http_server:
   # crt_path is path to TLS cert (if empty, server will use HTTP).
   crt_path: ""
 
-# face_recognition contains config for
-# face recognition engine.
 face_recognition:
   # List of face processors IP:PORTs or paths to UNIX sockets.
   face_processors:
     - "http://127.0.0.1:8000"
-  # Size of facial features vector.
-  facial_features_size: 128
-  # use GPU for finding faces in image (gives better quality).
-  GPU: true
-  # number of upsamples (bigger ->
-  #smaller faces could be found).
-  upsamples: 1
-  # number of re-samples (bigger ->
-  # better quality of features vectors, but slower).
-  jitters: 1
   # timeout_ms it timeout for HTTP(S) request to faceprocessor.
   timeout_ms: 100000
 
-# face_storage contains config for facial features storage.
 face_storage:
   # Address of ClickHouse database.
   addr: "127.0.0.1:9000"
@@ -54,9 +40,9 @@ face_storage:
   debug: true
   # sine_boundary is boundary value of facial features vector coincidence
   sine_boundary: 0.1
-  
+  # img_path is a path to folder with images.
+  img_path: "/home/mikhail/Pictures/facedb"
 
-# ControlPanelCFG contains config for control panels.
 control_panels:
   # List on control panels IP:PORTs or paths to UNIX sockets
   control_panels:

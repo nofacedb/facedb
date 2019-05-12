@@ -12,13 +12,15 @@ import (
 	"github.com/pkg/errors"
 )
 
+const apiV1PutFFs = "/api/v1/put_ffs"
+
 type imgTaskDoneReq struct {
 	Headers proto.Headers          `json:"headers"`
 	ID      uint64                 `json:"id"`
 	Faces   []facerecognition.Face `json:"faces"`
 }
 
-func (rest *restAPI) putFeaturesHandler(resp http.ResponseWriter, req *http.Request) {
+func (rest *restAPI) putFFsHandler(resp http.ResponseWriter, req *http.Request) {
 	if req.Method != "PUT" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return

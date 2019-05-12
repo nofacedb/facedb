@@ -14,6 +14,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const apiV1PutControl = "/api/v1/put_control"
+
 type imgControlDoneReq struct {
 	Headers   proto.Headers            `json:"headers"`
 	Cmd       string                   `json:"cmd"`

@@ -35,9 +35,11 @@ func createRestAPI(cfg *cfgparser.CFG) (*restAPI, error) {
 
 func (rest *restAPI) bindHandlers() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/put_image", rest.putImageHandler)
-	mux.HandleFunc("/api/v1/put_features", rest.putFeaturesHandler)
-	mux.HandleFunc("/api/v1/put_control", rest.putControlHandler)
+	mux.HandleFunc(apiV1PutImg, rest.putImgHandler)
+	mux.HandleFunc(apiV1PutFBs, rest.putFBsHandler)
+	mux.HandleFunc(apiV1PutFFs, rest.putFFsHandler)
+	mux.HandleFunc(apiV1PutControl, rest.putControlHandler)
+	mux.HandleFunc(apiV1AddFace, rest.addFaceHandler)
 
 	return mux
 }
