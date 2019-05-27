@@ -24,51 +24,75 @@ type imgControlDoneReq struct {
 }
 
 func (rest *restAPI) putControlHandler(resp http.ResponseWriter, req *http.Request) {
+	rest.logger.Debugf("got \"%s\" message", apiV1PutControl)
 	if req.Method != "PUT" {
+		rest.logger.Error(fmt.Errorf("invalid request method: %s", req.Method))
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
 	buff, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		fmt.Println(err)
+		rest.logger.Error(errors.Wrap(err, "unable to read request body"))
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	imgControlDoneReq := &imgControlDoneReq{}
 	if err := json.Unmarshal(buff, imgControlDoneReq); err != nil {
-		fmt.Println(err)
+		rest.logger.Error(errors.Wrap(err, "unable to unmarshal request body JSON"))
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	rest.logger.Debugf("source: \"%s\"", imgControlDoneReq.Headers.SrcAddr)
 
-	awVal := rest.cps.PopAwaitingImage(controlpanels.AwaitingKey{
+	if rest.immedResp {
+		go func() {
+			if err := processControlHandlerRequest(rest, imgControlDoneReq); err != nil {
+				rest.logger.Error(errors.Wrap(err, "unable to process put control request"))
+			}
+		}()
+		resp.WriteHeader(http.StatusOK)
+		return
+	}
+	if err := processControlHandlerRequest(rest, imgControlDoneReq); err != nil {
+		rest.logger.Error(errors.Wrap(err, "unable to process put control request"))
+		resp.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	resp.WriteHeader(http.StatusOK)
+}
+
+func processControlHandlerRequest(rest *restAPI, imgControlDoneReq *imgControlDoneReq) error {
+	awVal, err := rest.cps.PopAwaitingImage(controlpanels.AwaitingKey{
 		SrcAddr: imgControlDoneReq.Headers.SrcAddr,
 		ID:      imgControlDoneReq.ID,
 	})
+	if err != nil {
+		return err
+	}
 
 	switch imgControlDoneReq.Cmd {
 	case "submit":
 		if err := controlHandlerOnSubmit(rest, awVal, imgControlDoneReq); err != nil {
-			fmt.Println(err)
+			return errors.Wrap(err, "unable to process submit request")
 		}
 	case "recognize_again":
 		if err := controlHandlerOnRecognizeAgain(rest, awVal, imgControlDoneReq); err != nil {
-			fmt.Println(err)
+			return errors.Wrap(err, "unable to process rec_again request")
 		}
 	case "cancel":
 		if err := controlHandlerOnCancel(rest, awVal, imgControlDoneReq); err != nil {
-			fmt.Println(err)
+			return errors.Wrap(err, "unable to process cancel request")
 		}
 	default:
-		fmt.Println("Unknown command")
-		resp.WriteHeader(http.StatusBadRequest)
-		return
+		return fmt.Errorf("unknown type of request: \"%s\"", imgControlDoneReq.Cmd)
 	}
+
+	return nil
 }
 
-func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingVal, req *imgControlDoneReq) error {
+func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
 	for _, reqFaceData := range req.FacesData {
 		idx := -1
 		for i, awFaceData := range awVal.FacesData {
@@ -78,9 +102,10 @@ func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingVal, req
 			}
 		}
 		if idx == -1 {
-			fmt.Println("Skipping new box")
+			rest.logger.Debug("skipping another one face")
 			continue
 		}
+		rest.logger.Debug("pushing another one face to DB")
 		awFaceData := awVal.FacesData[idx]
 		if facedb.CmpCOBsByAll(reqFaceData.COB, awFaceData.COB) {
 			ff := facedb.FF{
@@ -103,7 +128,7 @@ func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingVal, req
 			}
 			ID := *(cob.ID)
 			if *(cob.ID) == facedb.UNKNOWNFIELD {
-				if err := rest.fs.InsertCOB([]facedb.COB{reqFaceData.COB}); err != nil {
+				if err = rest.fs.InsertCOB([]facedb.COB{reqFaceData.COB}); err != nil {
 					return errors.Wrap(err, "unable to insert new control object to database")
 				}
 				cob, err = rest.fs.SelectCOBByPassport(reqFaceData.COB.Passport)
@@ -127,12 +152,12 @@ func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingVal, req
 	return nil
 }
 
-func controlHandlerOnRecognizeAgain(rest *restAPI, awVal *controlpanels.AwaitingVal, req *imgControlDoneReq) error {
+func controlHandlerOnRecognizeAgain(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
 	fmt.Println("TODO")
 	return nil
 }
 
-func controlHandlerOnCancel(rest *restAPI, awVal *controlpanels.AwaitingVal, req *imgControlDoneReq) error {
-	fmt.Println("CANCELLED")
+func controlHandlerOnCancel(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
+	rest.logger.Debug("cancelling img request")
 	return nil
 }

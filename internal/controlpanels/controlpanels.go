@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const recAPIV1NotifyImg = "/api/v1/notify_img"
+
 // FaceData ...
 type FaceData struct {
 	Box facerecognition.FaceBox `json:"box"`
@@ -31,24 +34,41 @@ type AwaitingKey struct {
 	ID      uint64
 }
 
-// AwaitingVal is key for awaiting images.
-type AwaitingVal struct {
+// AwaitingImgVal is val for awaiting images.
+type AwaitingImgVal struct {
 	ImgBuff        []byte
 	FacesData      []FaceData
 	FacialFeatures [][]float64
 }
 
+// AwaitingFaceVal is val for awaiting faces.
+type AwaitingFaceVal struct {
+	ID                  string
+	ImgsNumber          int
+	ProcessedImgsNumber int
+	AwaitingImgBuffs    map[uint64][]byte
+	AwaitingFaces       map[uint64]facerecognition.Face
+}
+
 // Scheduler controls
 type Scheduler struct {
-	cfg           cfgparser.ControlPanelsCFG
+	cfg     cfgparser.ControlPanelsCFG
+	srcAddr string
+
 	idx           uint64
-	mu            sync.RWMutex
+	clientsMu     sync.RWMutex
 	clients       []*http.Client
 	defaultClient *http.Client
 
 	// Awaiting images.
 	awImgIdx     uint64
-	awaitingImgs map[AwaitingKey]*AwaitingVal
+	awImgMu      sync.RWMutex
+	awaitingImgs map[AwaitingKey]*AwaitingImgVal
+
+	// Awaitinig Faces.
+	awFacesImgIdx *uint64
+	awFacesMu     sync.RWMutex
+	awaitingFaces map[AwaitingKey]*AwaitingFaceVal
 }
 
 type unixDialer struct {
@@ -70,7 +90,8 @@ func (d *unixDialer) Dial(network, address string) (net.Conn, error) {
 }
 
 // CreateScheduler creates new Scheduler.
-func CreateScheduler(cfg cfgparser.ControlPanelsCFG) *Scheduler {
+func CreateScheduler(cfg cfgparser.ControlPanelsCFG,
+	srcAddr string, awFacesIdx *uint64) *Scheduler {
 	clients := make([]*http.Client, 0, len(cfg.ControlPanels))
 	for i, controlPanel := range cfg.ControlPanels {
 		if strings.HasPrefix(controlPanel, "unix://") {
@@ -98,24 +119,146 @@ func CreateScheduler(cfg cfgparser.ControlPanelsCFG) *Scheduler {
 	}
 	return &Scheduler{
 		cfg:     cfg,
-		idx:     0,
-		mu:      sync.RWMutex{},
-		clients: clients,
+		srcAddr: srcAddr,
+
+		idx:       0,
+		clientsMu: sync.RWMutex{},
+		clients:   clients,
 		defaultClient: &http.Client{
 			Timeout: time.Millisecond * time.Duration(cfg.TimeoutMS),
 		},
-		awaitingImgs: make(map[AwaitingKey]*AwaitingVal),
+
+		awImgIdx:     0,
+		awImgMu:      sync.RWMutex{},
+		awaitingImgs: make(map[AwaitingKey]*AwaitingImgVal),
+
+		awFacesImgIdx: awFacesIdx,
+		awFacesMu:     sync.RWMutex{},
+		awaitingFaces: make(map[AwaitingKey]*AwaitingFaceVal),
 	}
 }
 
-// PopAwaitingImage pops awaiting image from Scheduler's memory.
-func (cps *Scheduler) PopAwaitingImage(key AwaitingKey) *AwaitingVal {
+// PushAwaitingImage ...
+func (cps *Scheduler) PushAwaitingImage(key AwaitingKey, val *AwaitingImgVal) error {
+	cps.awImgMu.Lock()
+	defer cps.awImgMu.Unlock()
+	_, ok := cps.awaitingImgs[key]
+	if ok {
+		return fmt.Errorf("awaiting image with choosen key already exists")
+	}
+	cps.awaitingImgs[key] = val
+	return nil
+}
+
+// PopAwaitingImage ...
+func (cps *Scheduler) PopAwaitingImage(key AwaitingKey) (*AwaitingImgVal, error) {
+	cps.awImgMu.Lock()
+	defer cps.awImgMu.Unlock()
 	awVal, ok := cps.awaitingImgs[key]
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("no awaiting image with choosen key")
 	}
 	delete(cps.awaitingImgs, key)
-	return awVal
+	return awVal, nil
+}
+
+// PushAwaitingFace ...
+func (cps *Scheduler) PushAwaitingFace(key AwaitingKey, val *AwaitingFaceVal) error {
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	_, ok := cps.awaitingFaces[key]
+	if ok {
+		return fmt.Errorf("awaiting face with choosen key already exists")
+	}
+	cps.awaitingFaces[key] = val
+	return nil
+}
+
+// FindAwaitingFaceKey ...
+func (cps *Scheduler) FindAwaitingFaceKey(id uint64) *AwaitingKey {
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	for k0, v0 := range cps.awaitingFaces {
+		for k1 := range v0.AwaitingImgBuffs {
+			if k1 == id {
+				return &k0
+			}
+		}
+	}
+	return nil
+}
+
+// CheckAwaitingFace ...
+func (cps *Scheduler) CheckAwaitingFace(key AwaitingKey) bool {
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	_, ok := cps.awaitingFaces[key]
+	return ok
+}
+
+// PushAwaitingFaceID ...
+func (cps *Scheduler) PushAwaitingFaceID(key AwaitingKey, id string, imgsNumber int) error {
+	if ok := cps.CheckAwaitingFace(key); !ok {
+		return fmt.Errorf("no awaiting face with choosen key")
+	}
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	v := cps.awaitingFaces[key]
+	v.ID = id
+	v.ImgsNumber = imgsNumber
+	cps.awaitingFaces[key] = v
+	return nil
+}
+
+// PushAwaitingFaceImg ...
+func (cps *Scheduler) PushAwaitingFaceImg(key AwaitingKey, imgID uint64, imgBuff []byte) error {
+	if ok := cps.CheckAwaitingFace(key); !ok {
+		return fmt.Errorf("no awaiting face with choosen key")
+	}
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	v := cps.awaitingFaces[key]
+	v.AwaitingImgBuffs[imgID] = imgBuff
+	cps.awaitingFaces[key] = v
+	return nil
+}
+
+// PushAwaitingFFs ...
+func (cps *Scheduler) PushAwaitingFFs(key AwaitingKey, imgID uint64, face facerecognition.Face) error {
+	if ok := cps.CheckAwaitingFace(key); !ok {
+		return fmt.Errorf("no awaiting face with choosen key")
+	}
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	v := cps.awaitingFaces[key]
+	v.AwaitingFaces[imgID] = face
+	v.ProcessedImgsNumber++
+	cps.awaitingFaces[key] = v
+	return nil
+}
+
+// IsAwaitingFaceReady ...
+func (cps *Scheduler) IsAwaitingFaceReady(key AwaitingKey) (bool, error) {
+	if ok := cps.CheckAwaitingFace(key); !ok {
+		return false, fmt.Errorf("no awaiting face with choosen key")
+	}
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	v := cps.awaitingFaces[key]
+	// Shitty code.
+	return v.ImgsNumber == v.ProcessedImgsNumber && v.ID != "", nil
+}
+
+// PopAwaitingFace ...
+func (cps *Scheduler) PopAwaitingFace(key AwaitingKey) (*AwaitingFaceVal, error) {
+	cps.awFacesMu.Lock()
+	defer cps.awFacesMu.Unlock()
+	awVal, ok := cps.awaitingFaces[key]
+	if !ok {
+		return nil, fmt.Errorf("no awaiting image with choosen key")
+	}
+	delete(cps.awaitingImgs, key)
+	return awVal, nil
 }
 
 // ImgNotifyReq ...
@@ -162,7 +305,7 @@ func (cps *Scheduler) Notify(imgBuff []byte, faces []FaceData, facialFeatures []
 	if err != nil {
 		return nil, false, errors.Wrap(err, "unable to marshal faces data to JSON")
 	}
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+	req, err := http.NewRequest("PUT", url+recAPIV1NotifyImg, bytes.NewReader(data))
 	if err != nil {
 		return nil, false, errors.Wrap(err, "unable to create http-request")
 	}
@@ -186,7 +329,7 @@ func (cps *Scheduler) Notify(imgBuff []byte, faces []FaceData, facialFeatures []
 		cps.awaitingImgs[AwaitingKey{
 			SrcAddr: "",
 			ID:      ID,
-		}] = &AwaitingVal{
+		}] = &AwaitingImgVal{
 			ImgBuff:        imgBuff,
 			FacesData:      faces,
 			FacialFeatures: facialFeatures,

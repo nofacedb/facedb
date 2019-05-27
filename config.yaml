@@ -1,4 +1,6 @@
 http_server:
+  # name is a name, which will be sent as server name to other microservices.
+  name : "127.0.0.1:10000"
   # server_addr is IP:PORT or path to UNIX socket
   # on which server will listen.
   socket : "0.0.0.0:10000"
@@ -33,11 +35,11 @@ face_storage:
   # default_db is default ClickHouse database.
   default_db: "facedb"
   # write_timeout_s is timeout for ClickHouse write.
-  write_timeout_s:
+  write_timeout_ms: 100000
   # read_timeout_s is timeout for ClickHouse read.
-  read_timeout_s: 10
+  read_timeout_ms: 100000
   # debug sets ClickHouse debug mode to true.
-  debug: true
+  debug: false
   # sine_boundary is boundary value of facial features vector coincidence
   sine_boundary: 0.1
   # img_path is a path to folder with images.
@@ -46,4 +48,21 @@ face_storage:
 control_panels:
   # List on control panels IP:PORTs or paths to UNIX sockets
   control_panels:
-    - "http://127.0.0.1:10228"
+    - "http://127.0.0.1:11000"
+
+logger:
+  # "stdout" for writing logs to stdout;
+  # "stderr" for writing logs to stderr;
+  # "/some/directory/some/file" for writing logs to file;
+  # in the base filename you can use "%t" -
+  # current timestamp fmt;
+  output: "stdout"
+  use_colors: true
+  use_timestamp: true
+  # format string for timestamp "%t" in base filename and
+  # in log output.
+  timestamp_format: ""
+  # If you are sure that the size of a single log record
+  # does not exceed 4096 bytes on Unix (1024 bytes on Windows),
+  # then You can use non-blocking mode (it is faster).
+  non_blocking: true    

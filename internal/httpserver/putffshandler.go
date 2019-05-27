@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/nofacedb/facedb/internal/controlpanels"
+	"github.com/nofacedb/facedb/internal/facedb"
 	"github.com/nofacedb/facedb/internal/facerecognition"
 	"github.com/nofacedb/facedb/internal/proto"
 	"github.com/pkg/errors"
@@ -21,45 +22,101 @@ type imgTaskDoneReq struct {
 }
 
 func (rest *restAPI) putFFsHandler(resp http.ResponseWriter, req *http.Request) {
+	rest.logger.Debugf("got \"%s\" message", apiV1PutFFs)
 	if req.Method != "PUT" {
+		rest.logger.Error(fmt.Errorf("invalid request method: %s", req.Method))
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
 	buff, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		fmt.Println(err)
+		rest.logger.Error(errors.Wrap(err, "unable to read request body"))
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	imgTaskDoneReq := &imgTaskDoneReq{}
 	if err := json.Unmarshal(buff, imgTaskDoneReq); err != nil {
-		fmt.Println(err)
+		rest.logger.Error(errors.Wrap(err, "unable to unmarshal request body JSON"))
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	rest.logger.Debugf("source: \"%s\"", imgTaskDoneReq.Headers.SrcAddr)
 
-	imgBuff := rest.frs.PopAwaitingImage(facerecognition.AwaitingKey{
+	imgBuff, err := rest.frs.PopAwaitingImage(facerecognition.AwaitingKey{
 		SrcAddr: imgTaskDoneReq.Headers.SrcAddr,
 		ID:      imgTaskDoneReq.ID,
 	})
-	if imgBuff == nil {
-		resp.WriteHeader(http.StatusBadRequest)
-		return
+	if err != nil {
+		key := rest.cps.FindAwaitingFaceKey(imgTaskDoneReq.ID)
+		if key == nil {
+			resp.WriteHeader(http.StatusBadRequest)
+			return
+		} else {
+			if len(imgTaskDoneReq.Faces) == 0 {
+				resp.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			rest.cps.PushAwaitingFFs(*key, imgTaskDoneReq.ID, imgTaskDoneReq.Faces[0])
+			if ok, err := rest.cps.IsAwaitingFaceReady(*key); ok && err == nil {
+				if rest.immedResp {
+					go func() {
+						if err := processPutFeaturesOnAddFaceEnd(rest, *key); err != nil {
+							rest.logger.Error(errors.Wrap(err, "unable to process add_face features request"))
+							resp.WriteHeader(http.StatusBadRequest)
+							return
+						}
+					}()
+					resp.WriteHeader(http.StatusOK)
+					return
+				}
+				if err := processPutFeaturesOnAddFaceEnd(rest, *key); err != nil {
+					rest.logger.Error(errors.Wrap(err, "unable to process add_face features request"))
+					resp.WriteHeader(http.StatusBadRequest)
+					return
+				}
+			}
+			return
+		}
 	}
 
 	if rest.immedResp {
-		go processPutFeaturesRequest(rest, imgBuff, imgTaskDoneReq.Faces)
+		go func() {
+			if err := processPutFeaturesRequest(rest, imgBuff, imgTaskDoneReq.Faces); err != nil {
+				rest.logger.Error(errors.Wrap(err, "unable to process features request"))
+				// TODO.
+			}
+		}()
 		resp.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := processPutFeaturesRequest(rest, imgBuff, imgTaskDoneReq.Faces); err != nil {
+		rest.logger.Error(errors.Wrap(err, "unable to process features request"))
 		resp.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	resp.WriteHeader(http.StatusOK)
+}
 
+func processPutFeaturesOnAddFaceEnd(rest *restAPI, key controlpanels.AwaitingKey) error {
+	awFace, err := rest.cps.PopAwaitingFace(key)
+	if err != nil {
+		return errors.Wrap(err, "unable to pop awaiting face")
+	}
+	for _, v := range awFace.AwaitingFaces {
+		ff := facedb.FF{
+			COBID: awFace.ID,
+			IMGID: "00000000-0000-0000-0000-000000000000",
+			Box:   v.Box,
+			FF:    v.FacialFeatures,
+		}
+		if err := rest.fs.InsertFF([]facedb.FF{ff}); err != nil {
+			return errors.Wrap(err, "unable to insert facial features vector")
+		}
+		continue
+	}
+	return nil
 }
 
 func processPutFeaturesRequest(rest *restAPI, imgBuff []byte, faces []facerecognition.Face) error {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"io/ioutil"
 	"net"
@@ -18,6 +19,8 @@ import (
 	"github.com/nofacedb/facedb/internal/proto"
 	"github.com/pkg/errors"
 )
+
+const recAPIV1RpocImg = "/api/v1/proc_img"
 
 // FaceBox struct represents coordinates of one face in image.
 type FaceBox []uint64
@@ -58,16 +61,18 @@ type AwaitingKey struct {
 // It selects faceprocessor for current task by round-robin.
 type Scheduler struct {
 	// Config.
-	cfg cfgparser.FaceRecognitionCFG
+	cfg     cfgparser.FaceRecognitionCFG
+	srcAddr string
 
 	// Clients.
 	clientIdx     uint64
-	mu            sync.RWMutex
+	clientsMu     sync.RWMutex
 	clients       []*http.Client
 	defaultClient *http.Client
 
 	// Awaiting images.
-	awImgIdx     uint64
+	awImgIdx     *uint64
+	awImgMu      sync.Mutex
 	awaitingImgs map[AwaitingKey][]byte
 }
 
@@ -90,7 +95,8 @@ func (d *unixDialer) Dial(network, address string) (net.Conn, error) {
 }
 
 // CreateScheduler creates new Scheduler.
-func CreateScheduler(cfg cfgparser.FaceRecognitionCFG) *Scheduler {
+func CreateScheduler(cfg cfgparser.FaceRecognitionCFG,
+	srcAddr string, awImgIdx *uint64) *Scheduler {
 	clients := make([]*http.Client, 0, len(cfg.FaceProcessors))
 	for i, faceProc := range cfg.FaceProcessors {
 		if strings.HasPrefix(faceProc, "unix://") {
@@ -111,31 +117,89 @@ func CreateScheduler(cfg cfgparser.FaceRecognitionCFG) *Scheduler {
 				Transport: transport,
 				Timeout:   time.Millisecond * time.Duration(cfg.TimeoutMS),
 			})
-			cfg.FaceProcessors[i] = strings.Replace(faceProc, "unix://", "http://", -1)
+			cfg.FaceProcessors[i] = faceProc[len("unix://"):]
 		} else {
 			clients = append(clients, nil)
 		}
 	}
 	return &Scheduler{
-		cfg:       cfg,
+		cfg:     cfg,
+		srcAddr: srcAddr,
+
 		clientIdx: 0,
-		mu:        sync.RWMutex{},
+		clientsMu: sync.RWMutex{},
 		clients:   clients,
 		defaultClient: &http.Client{
 			Timeout: time.Millisecond * time.Duration(cfg.TimeoutMS),
 		},
+
+		awImgIdx:     awImgIdx,
 		awaitingImgs: make(map[AwaitingKey][]byte),
 	}
 }
 
-// PopAwaitingImage pops awaiting image from Scheduler's memory.
-func (frs *Scheduler) PopAwaitingImage(key AwaitingKey) []byte {
+// GenerateID ...
+func (frs *Scheduler) GenerateID() uint64 {
+	return atomic.AddUint64(frs.awImgIdx, 1)
+}
+
+// PushAwaitingImage ...
+func (frs *Scheduler) PushAwaitingImage(key AwaitingKey, imgBuff []byte) error {
+	frs.awImgMu.Lock()
+	defer frs.awImgMu.Unlock()
+	_, ok := frs.awaitingImgs[key]
+	if ok {
+		return fmt.Errorf("awaiting image with choosen key already exists")
+	}
+	frs.awaitingImgs[key] = imgBuff
+	return nil
+}
+
+// PopAwaitingImage ...
+func (frs *Scheduler) PopAwaitingImage(key AwaitingKey) ([]byte, error) {
+	frs.awImgMu.Lock()
+	defer frs.awImgMu.Unlock()
 	imgBuff, ok := frs.awaitingImgs[key]
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("no awaiting image with choosen key")
 	}
 	delete(frs.awaitingImgs, key)
-	return imgBuff
+	return imgBuff, nil
+}
+
+// GetFaceProcessor ...
+func (frs *Scheduler) GetFaceProcessor() (*http.Client, string, error) {
+	frs.clientsMu.RLock()
+	defer frs.clientsMu.RUnlock()
+	if len(frs.cfg.FaceProcessors) == 0 {
+		return nil, "", fmt.Errorf("no faceprocessors are available")
+	}
+	clientIdx := frs.clientIdx % uint64(len(frs.cfg.FaceProcessors))
+	url := frs.cfg.FaceProcessors[clientIdx]
+	var cli *http.Client
+	if frs.clients[clientIdx] != nil {
+		cli = frs.clients[clientIdx]
+	} else {
+		frs.clientIdx++
+		cli = frs.defaultClient
+	}
+
+	return cli, url, nil
+}
+
+// DeleteFaceProcessor ...
+func (frs *Scheduler) DeleteFaceProcessor(url string) {
+	frs.clientsMu.Lock()
+	defer frs.clientsMu.Unlock()
+	clientIdx := 0
+	for i := 0; i < len(frs.cfg.FaceProcessors); i++ {
+		if frs.cfg.FaceProcessors[i] == url {
+			clientIdx = i
+			break
+		}
+	}
+	frs.cfg.FaceProcessors = append(frs.cfg.FaceProcessors[:clientIdx], frs.cfg.FaceProcessors[clientIdx+1:]...)
+	frs.clients = append(frs.clients[:clientIdx], frs.clients[clientIdx+1:]...)
 }
 
 // BytesToImage converts bytes buffer to Golang image.
@@ -158,26 +222,12 @@ type ImgTaskResp struct {
 }
 
 // GetFaces returns Faces from image buffer.
-func (frs *Scheduler) GetFaces(imgBuff []byte) ([]Face, bool, error) {
-	frs.mu.RLock()
-	clientIdx := frs.clientIdx % uint64(len(frs.cfg.FaceProcessors))
-	url := frs.cfg.FaceProcessors[clientIdx]
-	var cli *http.Client
-	if frs.clients[clientIdx] != nil {
-		cli = frs.clients[clientIdx]
-	} else {
-		frs.clientIdx++
-		cli = frs.defaultClient
-	}
-	frs.mu.RUnlock()
-
-	ID := atomic.AddUint64(&(frs.awImgIdx), 1)
-
+func (frs *Scheduler) GetFaces(imgBuff []byte, ID uint64, cli *http.Client, url string) ([]Face, bool, error) {
 	base64ImgBuff := make([]byte, base64.StdEncoding.EncodedLen(len(imgBuff)))
 	base64.StdEncoding.Encode(base64ImgBuff, imgBuff)
 	data, err := json.Marshal(ImgTaskReq{
 		Headers: proto.Headers{
-			SrcAddr: "",
+			SrcAddr: frs.srcAddr,
 			Immed:   false,
 		},
 		ID:      ID,
@@ -186,20 +236,14 @@ func (frs *Scheduler) GetFaces(imgBuff []byte) ([]Face, bool, error) {
 	if err != nil {
 		return nil, false, errors.Wrap(err, "unable to marshal image buffer to JSON")
 	}
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+	req, err := http.NewRequest("PUT", url+recAPIV1RpocImg, bytes.NewReader(data))
 	if err != nil {
 		return nil, false, errors.Wrap(err, "unable to create http-request")
 	}
 
 	resp, err := cli.Do(req)
 	if err != nil {
-		frs.mu.Lock()
-		if frs.cfg.FaceProcessors[clientIdx] == url {
-			frs.cfg.FaceProcessors = append(frs.cfg.FaceProcessors[:clientIdx], frs.cfg.FaceProcessors[clientIdx+1:]...)
-			frs.clients = append(frs.clients[:clientIdx], frs.clients[clientIdx+1:]...)
-		}
-		frs.mu.Unlock()
-
+		frs.DeleteFaceProcessor(url)
 		return nil, false, errors.Wrap(err, "unable to get response from faceprocessor")
 	}
 
@@ -213,13 +257,5 @@ func (frs *Scheduler) GetFaces(imgBuff []byte) ([]Face, bool, error) {
 		return nil, false, errors.Wrap(err, "unable to unmarshal response JSON")
 	}
 
-	if imgTaskResp.Headers.Immed {
-		frs.awaitingImgs[AwaitingKey{
-			SrcAddr: "",
-			ID:      ID,
-		}] = imgBuff
-		return nil, true, nil
-	}
-
-	return imgTaskResp.Faces, false, nil
+	return imgTaskResp.Faces, imgTaskResp.Headers.Immed, nil
 }

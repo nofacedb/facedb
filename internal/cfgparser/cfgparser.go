@@ -36,7 +36,8 @@ func ParseCArgs() *CArgs {
 
 // HTTPServerCFG contains config for HTTP Server.
 type HTTPServerCFG struct {
-	Addr           string `yaml:"addr"`
+	Name           string `yaml:"name"`
+	Socket         string `yaml:"socket"`
 	WriteTimeoutMS int    `yaml:"write_timeout_ms"`
 	ReadTimeoutMS  int    `yaml:"read_timeout_ms"`
 	ImmedResp      bool   `yaml:"immed_resp"`
@@ -46,25 +47,21 @@ type HTTPServerCFG struct {
 
 // FaceStorageCFG contains config for facial features storage.
 type FaceStorageCFG struct {
-	Addr          string  `yaml:"addr"`
-	User          string  `yaml:"user"`
-	Passwd        string  `yaml:"passwd"`
-	NPing         int     `yaml:"n_ping"`
-	DefaultDB     string  `yaml:"default_db"`
-	WriteTimeoutS int     `yaml:"write_timeout_s"`
-	ReadTimeoutS  int     `yaml:"read_timeout_s"`
-	Debug         bool    `yaml:"debug"`
-	SineBoundary  float64 `yaml:"sine_boundary"`
+	Addr           string  `yaml:"addr"`
+	User           string  `yaml:"user"`
+	Passwd         string  `yaml:"passwd"`
+	NPing          int     `yaml:"n_ping"`
+	DefaultDB      string  `yaml:"default_db"`
+	WriteTimeoutMS int     `yaml:"write_timeout_ms"`
+	ReadTimeoutMS  int     `yaml:"read_timeout_ms"`
+	Debug          bool    `yaml:"debug"`
+	SineBoundary   float64 `yaml:"sine_boundary"`
 }
 
 // FaceRecognitionCFG contains config for face recognition engine.
 type FaceRecognitionCFG struct {
-	FaceProcessors     []string `yaml:"face_processors"`
-	FacialFeaturesSize uint64   `yaml:"facial_features_size"`
-	GPU                bool     `yaml:"gpu"`
-	Upsamples          uint64   `yaml:"upsamples"`
-	Jitters            uint64   `yaml:"jitters"`
-	TimeoutMS          int      `yaml:"timeout_ms"`
+	FaceProcessors []string `yaml:"face_processors"`
+	TimeoutMS      int      `yaml:"timeout_ms"`
 }
 
 // ControlPanelsCFG contains config for control panels.
@@ -73,26 +70,49 @@ type ControlPanelsCFG struct {
 	TimeoutMS     int      `yaml:"timeout_ms"`
 }
 
+// LoggerCFG ...
+type LoggerCFG struct {
+	Output          string `yaml:"output"`
+	UseColors       bool   `yaml:"use_colors"`
+	UseTimestamp    bool   `yaml:"use_timestamp"`
+	TimestampFormat string `yaml:"timestamp_format"`
+	NonBlocking     bool   `yaml:"non_blocking"`
+}
+
 // CFG contains config for FACEDB server.
 type CFG struct {
 	HTTPServerCFG      HTTPServerCFG      `yaml:"http_server"`
 	FaceRecognitionCFG FaceRecognitionCFG `yaml:"face_recognition"`
 	FaceStorageCFG     FaceStorageCFG     `yaml:"face_storage"`
 	ControlPanelsCFG   ControlPanelsCFG   `yaml:"control_panels"`
+	LoggerCFG          LoggerCFG          `yaml:"logger"`
 }
 
-// ReadCFG reads YAML configuration file and returns it as *CFG.
-func ReadCFG(fname string) (*CFG, error) {
-	yamlFile, err := ioutil.ReadFile(fname)
+func readCFG(configPath string) (*CFG, error) {
+	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to read config file")
-	}
-	cfg := &CFG{}
-	if err := yaml.Unmarshal(yamlFile, cfg); err != nil {
-		return nil, errors.Wrap(err, "unable to parse config file")
+		return nil, errors.Wrap(err, "unable to read configuration file")
 	}
 
-	fmt.Println(cfg.FaceStorageCFG.SineBoundary)
+	cfg := &CFG{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, errors.Wrap(err, "unable to parse configuration file")
+	}
+
+	return cfg, nil
+}
+
+// GetCFG ...
+func GetCFG() (*CFG, error) {
+	cargs := parseCArgs()
+	if cargs.ConfigPath == "" {
+		return nil, fmt.Errorf("path to YAML configuration file with carg \"--config\" is not specified")
+	}
+
+	cfg, err := readCFG(cargs.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }

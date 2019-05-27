@@ -5,22 +5,45 @@ import (
 	"os"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
+	"github.com/nofacedb/facedb/internal/controlpanels"
+	"github.com/nofacedb/facedb/internal/facedb"
+	"github.com/nofacedb/facedb/internal/facerecognition"
 	"github.com/nofacedb/facedb/internal/httpserver"
+	log "github.com/nofacedb/facedb/internal/logger"
 )
 
 func main() {
-	cargs := cfgparser.ParseCArgs()
-	cfg, err := cfgparser.ReadCFG(cargs.CFGName)
+	cfg, err := cfgparser.GetCFG()
 	if err != nil {
-		// Not logger, because it wasn't configured.
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	logger, err := log.CreateLogger(&(cfg.LoggerCFG))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	serv, err := httpserver.CreateHTTPServer(cfg)
+	srcAddr := ""
+	if (cfg.HTTPServerCFG.KeyPath != "") && (cfg.HTTPServerCFG.CrtPath != "") {
+		srcAddr = "https://" + cfg.HTTPServerCFG.Name
+	} else {
+		srcAddr = "http://" + cfg.HTTPServerCFG.Name
+	}
+
+	var awIdx uint64
+	frs := facerecognition.CreateScheduler(cfg.FaceRecognitionCFG, srcAddr, &awIdx)
+	cps := controlpanels.CreateScheduler(cfg.ControlPanelsCFG, srcAddr, &awIdx)
+
+	fs, err := facedb.CreateFaceStorage(&(cfg.FaceStorageCFG), logger)
 	if err != nil {
-		// TODO: logger.
-		fmt.Println(err)
+		logger.Error(err)
+		os.Exit(1)
+	}
+
+	serv, err := httpserver.CreateHTTPServer(cfg, frs, cps, fs, logger)
+	if err != nil {
+		logger.Error(err)
 		os.Exit(1)
 	}
 

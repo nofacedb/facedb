@@ -8,9 +8,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	log "github.com/sirupsen/logrus"
+
 	"time"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
+	"github.com/nofacedb/facedb/internal/controlpanels"
+	"github.com/nofacedb/facedb/internal/facedb"
+	"github.com/nofacedb/facedb/internal/facerecognition"
 	"github.com/pkg/errors"
 )
 
@@ -18,24 +23,30 @@ import (
 type HTTPServer struct {
 	rest    *restAPI
 	serv    *http.Server
+	logger  *log.Logger
 	keyPath string
 	crtPath string
 }
 
 // CreateHTTPServer creates new HTTPServer.
-func CreateHTTPServer(cfg *cfgparser.CFG) (*HTTPServer, error) {
-	rest, err := createRestAPI(cfg)
+func CreateHTTPServer(cfg *cfgparser.CFG,
+	frs *facerecognition.Scheduler,
+	cps *controlpanels.Scheduler,
+	fs *facedb.FaceStorage,
+	logger *log.Logger) (*HTTPServer, error) {
+	rest, err := createRestAPI(cfg, frs, cps, fs, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create rest API")
 	}
 	return &HTTPServer{
 		rest: rest,
 		serv: &http.Server{
-			Addr:         cfg.HTTPServerCFG.Addr,
+			Addr:         cfg.HTTPServerCFG.Socket,
 			Handler:      rest.bindHandlers(),
 			WriteTimeout: time.Millisecond * time.Duration(cfg.HTTPServerCFG.WriteTimeoutMS),
 			ReadTimeout:  time.Millisecond * time.Duration(cfg.HTTPServerCFG.ReadTimeoutMS),
 		},
+		logger:  logger,
 		keyPath: cfg.HTTPServerCFG.KeyPath,
 		crtPath: cfg.HTTPServerCFG.CrtPath,
 	}, nil
@@ -67,8 +78,8 @@ func (s *HTTPServer) gracefulShutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(5))
 	defer cancel()
 	if err := s.serv.Shutdown(ctx); err != nil {
-		fmt.Println("error")
+		s.logger.Error(errors.Wrap(err, "unable to shutdown server successfully"))
 	} else {
-		fmt.Println("hooray")
+		s.logger.Info("server was shutdowned successfully")
 	}
 }

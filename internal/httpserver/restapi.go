@@ -7,29 +7,29 @@ import (
 	"github.com/nofacedb/facedb/internal/controlpanels"
 	"github.com/nofacedb/facedb/internal/facedb"
 	"github.com/nofacedb/facedb/internal/facerecognition"
-	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 type restAPI struct {
 	immedResp bool
-
-	frs *facerecognition.Scheduler
-	cps *controlpanels.Scheduler
-	fs  *facedb.FaceStorage
+	srcAddr   string
+	frs       *facerecognition.Scheduler
+	cps       *controlpanels.Scheduler
+	fs        *facedb.FaceStorage
+	logger    *log.Logger
 }
 
-func createRestAPI(cfg *cfgparser.CFG) (*restAPI, error) {
-	frs := facerecognition.CreateScheduler(cfg.FaceRecognitionCFG)
-	cps := controlpanels.CreateScheduler(cfg.ControlPanelsCFG)
-	fs, err := facedb.CreateFaceStorage(cfg.FaceStorageCFG)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to connect to facedb")
-	}
+func createRestAPI(cfg *cfgparser.CFG,
+	frs *facerecognition.Scheduler,
+	cps *controlpanels.Scheduler,
+	fs *facedb.FaceStorage,
+	logger *log.Logger) (*restAPI, error) {
 	return &restAPI{
 		immedResp: cfg.HTTPServerCFG.ImmedResp,
 		frs:       frs,
 		cps:       cps,
 		fs:        fs,
+		logger:    logger,
 	}, nil
 }
 

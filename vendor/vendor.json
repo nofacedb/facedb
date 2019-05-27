@@ -27,16 +27,88 @@
 			"revisionTime": "2019-02-10T10:29:54Z"
 		},
 		{
+			"checksumSHA1": "31iiApVzJDI2QAQt73Q4Yw1bVOY=",
+			"path": "github.com/kshvakov/clickhouse",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "f9vKXNe4BAsTz8Vh1mLRJ++T68Q=",
+			"path": "github.com/kshvakov/clickhouse/lib/binary",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "IEFIMD9e65ASRnnI4pAvmu4s3f8=",
+			"path": "github.com/kshvakov/clickhouse/lib/cityhash102",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "yM0+lmkC/USyRH3S52jopWTGBXI=",
+			"path": "github.com/kshvakov/clickhouse/lib/column",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "conHp3H3mGPmLhEdgEMKyfkoF+M=",
+			"path": "github.com/kshvakov/clickhouse/lib/data",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "KU4wHwqDVamUoKaZbrAtrzcKx40=",
+			"path": "github.com/kshvakov/clickhouse/lib/leakypool",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "5jrXVi2ZcS+qO/zsR4/69UrTyx8=",
+			"path": "github.com/kshvakov/clickhouse/lib/lz4",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "ufET0wbq25geHjZiCY3tu4FlLeU=",
+			"path": "github.com/kshvakov/clickhouse/lib/protocol",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "+aCdQkkX247xDx4yf4Dkx9/ww94=",
+			"path": "github.com/kshvakov/clickhouse/lib/types",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
+			"checksumSHA1": "Ol98vQb9WYi1dbpBfaFnnato7JU=",
+			"path": "github.com/kshvakov/clickhouse/lib/writebuffer",
+			"revision": "04847609e9ba2f114bdd435bc78e6c816a4ef5c1",
+			"revisionTime": "2019-04-24T20:02:02Z"
+		},
+		{
 			"checksumSHA1": "0H/VjT8w1CB702qWpbYMqr65Mf0=",
 			"path": "github.com/pkg/errors",
 			"revision": "ffb6e22f01932bf7ac35e0bad9be11f01d1c8685",
 			"revisionTime": "2019-01-09T06:16:28Z"
 		},
 		{
+			"checksumSHA1": "3EH6WFZ6eet+L973ovo471d8tEc=",
+			"path": "github.com/sirupsen/logrus",
+			"revision": "f0375eb5b588893ff556c71dee32d98e57a9b777",
+			"revisionTime": "2019-05-10T07:41:01Z"
+		},
+		{
 			"checksumSHA1": "cXokCvyFg5J/JpxYNKB5JSqJH7g=",
 			"path": "golang.org/x/image/bmp",
 			"revision": "6d32002ffd7577f23673706728e1c510698cecb1",
 			"revisionTime": "2019-04-28T16:51:35Z"
+		},
+		{
+			"checksumSHA1": "vrkWRvoGTTdPR5GENAlS+Z7CL0s=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "9a3f9b0469bbc6b8802087ae5c0af9f61502de01",
+			"revisionTime": "2018-12-28T13:18:00Z"
 		},
 		{
 			"checksumSHA1": "QqDq2x8XOU7IoOR98Cx1eiV5QY8=",

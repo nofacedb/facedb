@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/kshvakov/clickhouse"
 	"github.com/nofacedb/facedb/internal/cfgparser"
 	"github.com/pkg/errors"
@@ -14,15 +16,16 @@ import (
 type FaceStorage struct {
 	db           *sql.DB
 	SineBoundary float64
+	logger       *log.Logger
 }
 
 const dSNPattern = "tcp://%s?username=%s&password=%s&database=%s&read_timeout=%d&write_timeout=%d&debug=%v"
 
 // CreateFaceStorage ...
-func CreateFaceStorage(cfg cfgparser.FaceStorageCFG) (*FaceStorage, error) {
+func CreateFaceStorage(cfg *cfgparser.FaceStorageCFG, logger *log.Logger) (*FaceStorage, error) {
 	dSN := fmt.Sprintf(dSNPattern, cfg.Addr,
 		cfg.User, cfg.Passwd, cfg.DefaultDB,
-		cfg.ReadTimeoutS, cfg.WriteTimeoutS, cfg.Debug)
+		cfg.ReadTimeoutMS/1000, cfg.WriteTimeoutMS/1000, cfg.Debug)
 	db, err := sql.Open("clickhouse", dSN)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable connect to facedb")
@@ -35,18 +38,19 @@ func CreateFaceStorage(cfg cfgparser.FaceStorageCFG) (*FaceStorage, error) {
 		}
 
 		if exception, ok := err.(*clickhouse.Exception); ok {
-			fmt.Printf("[%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
+			logger.Errorf("[%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
 		} else {
-			fmt.Println(err)
+			logger.Error(errors.Wrapf(err, "unable to ping ClickHouse DB for %d time", pingTimes+1))
 		}
 	}
 	if pingTimes == cfg.NPing {
-		return nil, fmt.Errorf("unable ping database for %d times", cfg.NPing)
+		return nil, fmt.Errorf("unable to ping ClickHouse DB for %d times", cfg.NPing)
 	}
 
 	return &FaceStorage{
 		db:           db,
 		SineBoundary: cfg.SineBoundary,
+		logger:       logger,
 	}, nil
 }
 
