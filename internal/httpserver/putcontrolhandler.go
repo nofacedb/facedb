@@ -8,156 +8,229 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/nofacedb/facedb/internal/controlpanels"
-	"github.com/nofacedb/facedb/internal/facedb"
 	"github.com/nofacedb/facedb/internal/proto"
+	"github.com/nofacedb/facedb/internal/schedulers"
+	"github.com/nofacedb/facedb/internal/storages"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 )
 
-const apiV1PutControl = "/api/v1/put_control"
+func validatePutControlReq(req *http.Request) (*proto.PutControlReq, *proto.ErrorData) {
+	if req.Method != httpPutMethod {
+		return nil, &proto.ErrorData{
+			Code: proto.InvalidRequestMethodCode,
+			Info: "invalid request method",
+			Text: fmt.Sprintf("expected \"%s\", got \"%s\"",
+				httpPutMethod, req.Method),
+		}
+	}
 
-type imgControlDoneReq struct {
-	Headers   proto.Headers            `json:"headers"`
-	Cmd       string                   `json:"cmd"`
-	ID        uint64                   `json:"id"`
-	FacesData []controlpanels.FaceData `json:"faces_data"`
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, &proto.ErrorData{
+			Code: proto.CorruptedBodyCode,
+			Info: "corrupted request body",
+			Text: err.Error(),
+		}
+	}
+	putControlReq := &proto.PutControlReq{}
+	if err := json.Unmarshal(data, putControlReq); err != nil {
+		return nil, &proto.ErrorData{
+			Code: proto.CorruptedBodyCode,
+			Info: "corrupted request body",
+			Text: err.Error(),
+		}
+	}
+	return putControlReq, nil
 }
 
 func (rest *restAPI) putControlHandler(resp http.ResponseWriter, req *http.Request) {
-	rest.logger.Debugf("got \"%s\" message", apiV1PutControl)
-	if req.Method != "PUT" {
-		rest.logger.Error(fmt.Errorf("invalid request method: %s", req.Method))
-		resp.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	buff, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		rest.logger.Error(errors.Wrap(err, "unable to read request body"))
+	rest.logger.Infof("got request on \"%s\"", apiPutControl)
+	putControlReq, errorData := validatePutControlReq(req)
+	if errorData != nil {
+		rest.logger.Warnf("unable to process request: [%d] (\"%s\")",
+			errorData.Code, errorData.Text)
 		resp.WriteHeader(http.StatusBadRequest)
+		e := &proto.ImmedResp{
+			Header: proto.Header{
+				SrcAddr: rest.srcAddr,
+			},
+			ErrorData: errorData,
+		}
+		re, _ := json.Marshal(e)
+		resp.Write(re)
 		return
 	}
 
-	imgControlDoneReq := &imgControlDoneReq{}
-	if err := json.Unmarshal(buff, imgControlDoneReq); err != nil {
-		rest.logger.Error(errors.Wrap(err, "unable to unmarshal request body JSON"))
-		resp.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	rest.logger.Debugf("source: \"%s\"", imgControlDoneReq.Headers.SrcAddr)
+	rest.logger.Debugf("SrcAddr: \"%s\", UUID: \"%s\"",
+		putControlReq.Header.SrcAddr,
+		putControlReq.Header.UUID)
 
-	if rest.immedResp {
-		go func() {
-			if err := processControlHandlerRequest(rest, imgControlDoneReq); err != nil {
-				rest.logger.Error(errors.Wrap(err, "unable to process put control request"))
-			}
-		}()
-		resp.WriteHeader(http.StatusOK)
-		return
-	}
-	if err := processControlHandlerRequest(rest, imgControlDoneReq); err != nil {
-		rest.logger.Error(errors.Wrap(err, "unable to process put control request"))
-		resp.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	go rest.processPutControlReq(putControlReq)
+
 	resp.WriteHeader(http.StatusOK)
+	e := &proto.ImmedResp{
+		Header: proto.Header{
+			SrcAddr: rest.srcAddr,
+			UUID:    putControlReq.Header.UUID,
+		},
+	}
+	re, _ := json.Marshal(e)
+	resp.Write(re)
 }
 
-func processControlHandlerRequest(rest *restAPI, imgControlDoneReq *imgControlDoneReq) error {
-	awVal, err := rest.cps.PopAwaitingImage(controlpanels.AwaitingKey{
-		SrcAddr: imgControlDoneReq.Headers.SrcAddr,
-		ID:      imgControlDoneReq.ID,
-	})
-	if err != nil {
-		return err
+func (rest *restAPI) processPutControlReq(putControlReq *proto.PutControlReq) {
+	k := putControlReq.Header.UUID
+	awControl := rest.cpScheduler.ACQ.Pop(k)
+	if awControl == nil {
+		return
 	}
 
-	switch imgControlDoneReq.Cmd {
-	case "submit":
-		if err := controlHandlerOnSubmit(rest, awVal, imgControlDoneReq); err != nil {
-			return errors.Wrap(err, "unable to process submit request")
-		}
-	case "recognize_again":
-		if err := controlHandlerOnRecognizeAgain(rest, awVal, imgControlDoneReq); err != nil {
-			return errors.Wrap(err, "unable to process rec_again request")
-		}
-	case "cancel":
-		if err := controlHandlerOnCancel(rest, awVal, imgControlDoneReq); err != nil {
-			return errors.Wrap(err, "unable to process cancel request")
-		}
-	default:
-		return fmt.Errorf("unknown type of request: \"%s\"", imgControlDoneReq.Cmd)
+	switch putControlReq.Command {
+	case proto.CancelCommand:
+		processPutControlReqOnCancelCommand(rest, awControl, putControlReq)
+	case proto.ProcessAgainCommand:
+		processPutControlReqOnProcessAgainCommand(rest, awControl, putControlReq)
+	case proto.SubmitCommand:
+		processPutControlReqOnSubmitCommand(rest, awControl, putControlReq)
 	}
-
-	return nil
 }
 
-func controlHandlerOnSubmit(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
-	for _, reqFaceData := range req.FacesData {
-		idx := -1
-		for i, awFaceData := range awVal.FacesData {
-			if reflect.DeepEqual(reqFaceData.Box, awFaceData.Box) {
-				idx = i
-				break
-			}
+func processPutControlReqOnCancelCommand(
+	rest *restAPI,
+	awControl *schedulers.AwaitingControl,
+	putControlReq *proto.PutControlReq) {
+	rest.logger.Debugf("cancelling request for image: %s\n", putControlReq.Header.UUID)
+}
+
+func processPutControlReqOnProcessAgainCommand(
+	rest *restAPI,
+	awControl *schedulers.AwaitingControl,
+	putControlReq *proto.PutControlReq) {
+	k := awControl.UUID
+	v := &schedulers.AwaitingImage{
+		TS:        time.Now(),
+		SrcAddr:   putControlReq.Header.SrcAddr,
+		UUID:      k,
+		ImgBuff:   awControl.ImgBuff,
+		FaceBoxes: make([]proto.FaceBox, 0, len(putControlReq.ImageControlObjects)),
+	}
+	for _, imgCob := range putControlReq.ImageControlObjects {
+		v.FaceBoxes = append(v.FaceBoxes, imgCob.FaceBox)
+	}
+
+	if err := rest.frScheduler.AwImgsQ.Push(k, v); err != nil {
+		err = errors.Wrapf(err, "unable to push \"PutImageReq\" with UUID \"%s\"to queue", k)
+		rest.logger.Warnf(err.Error())
+		// TODO.
+		return
+	}
+	rest.logger.Debugf("successfully pushed \"PutImageReq\" with UUID \"%s\" to queue", k)
+
+	processImageReq := &proto.ProcessImageReq{
+		Header: proto.Header{
+			SrcAddr: rest.srcAddr,
+			UUID:    k,
+		},
+		ImgBuff:   awControl.ImgBuff,
+		FaceBoxes: v.FaceBoxes,
+	}
+	if err := rest.frScheduler.SendProcessImageReq(processImageReq); err != nil {
+		rest.logger.Error(err)
+		rest.frScheduler.AwImgsQ.Pop(k)
+		// TODO.
+		return
+	}
+	rest.logger.Debugf("successfully sent \"ProcessImageReq\" with UUID \"%s\" to facerecognizer", k)
+}
+
+func isExistingFaceBox(facebox proto.FaceBox, awControl *schedulers.AwaitingControl) int {
+	for i, imgCob := range awControl.ImageControlObjects {
+		if reflect.DeepEqual(facebox, imgCob.FaceBox) {
+			return i
 		}
+	}
+	return -1
+}
+
+func processPutControlReqOnSubmitCommand(
+	rest *restAPI,
+	awControl *schedulers.AwaitingControl,
+	putControlReq *proto.PutControlReq) {
+
+	ffvsToInsert := make([]proto.FacialFeaturesVector, 0)
+	fbsToInsert := make([]proto.FaceBox, 0)
+	cobsToInsert := make([]proto.ControlObject, 0)
+	shouldInsert := make([]bool, 0)
+
+	for _, imgCob := range putControlReq.ImageControlObjects {
+		idx := isExistingFaceBox(imgCob.FaceBox, awControl)
 		if idx == -1 {
-			rest.logger.Debug("skipping another one face")
 			continue
 		}
-		rest.logger.Debug("pushing another one face to DB")
-		awFaceData := awVal.FacesData[idx]
-		if facedb.CmpCOBsByAll(reqFaceData.COB, awFaceData.COB) {
-			ff := facedb.FF{
-				COBID: *(awFaceData.COB.ID),
-				IMGID: "00000000-0000-0000-0000-000000000000",
-				Box:   reqFaceData.Box,
-				FF:    awVal.FacialFeatures[idx],
-			}
-			if err := rest.fs.InsertFF([]facedb.FF{ff}); err != nil {
-				return errors.Wrap(err, "unable to insert facial features vector")
-			}
-			continue
-		}
-		if *(awFaceData.COB.ID) == facedb.UNKNOWNFIELD {
-			reqFaceData.COB.TS = new(time.Time)
-			*(reqFaceData.COB.TS) = time.Now()
-			cob, err := rest.fs.SelectCOBByPassport(reqFaceData.COB.Passport)
-			if err != nil {
-				return errors.Wrap(err, "unable to get inserted control object UUID")
-			}
-			ID := *(cob.ID)
-			if *(cob.ID) == facedb.UNKNOWNFIELD {
-				if err = rest.fs.InsertCOB([]facedb.COB{reqFaceData.COB}); err != nil {
-					return errors.Wrap(err, "unable to insert new control object to database")
-				}
-				cob, err = rest.fs.SelectCOBByPassport(reqFaceData.COB.Passport)
-				if err != nil {
-					return errors.Wrap(err, "unable to get inserted control object UUID")
-				}
-				ID = *(cob.ID)
-			}
-			ff := facedb.FF{
-				COBID: ID,
-				IMGID: "00000000-0000-0000-0000-000000000000",
-				Box:   reqFaceData.Box,
-				FF:    awVal.FacialFeatures[idx],
-			}
-			if err := rest.fs.InsertFF([]facedb.FF{ff}); err != nil {
-				return errors.Wrap(err, "unable to insert facial features vector")
-			}
+
+		ffvsToInsert = append(ffvsToInsert, awControl.FacialFeaturesVectors[idx])
+		fbsToInsert = append(fbsToInsert, imgCob.FaceBox)
+		cobsToInsert = append(cobsToInsert, imgCob.ControlObject)
+		if (&awControl.ImageControlObjects[idx].ControlObject).Compare(&(imgCob.ControlObject)) {
+			shouldInsert = append(shouldInsert, false)
+		} else {
+			shouldInsert = append(shouldInsert, true)
 		}
 	}
 
-	return nil
-}
+	faceIDs := make([]string, 0, len(ffvsToInsert))
 
-func controlHandlerOnRecognizeAgain(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
-	fmt.Println("TODO")
-	return nil
-}
+	// Inserting new ControlObjects.
+	for i, cob := range cobsToInsert {
+		if !shouldInsert[i] {
+			faceIDs = append(faceIDs, cob.ID)
+			continue
+		}
+		dbCob, err := rest.fStorage.SelectControlObjectByPassport(cob.Passport)
+		if err != nil {
+			rest.logger.Error(errors.Wrap(err, "unable to select control object by passport; partial commit possible"))
+			return
+		}
+		if dbCob.ID != proto.DefaultStringField {
+			faceIDs = append(faceIDs, dbCob.ID)
+			continue
+		}
+		cob.ID = uuid.Must(uuid.NewV4()).String()
+		if err = rest.fStorage.InsertControlObjects([]proto.ControlObject{cob}); err != nil {
+			rest.logger.Error(errors.Wrap(err, "unable to insert control object; partial commit possible"))
+			return
+		}
+		faceIDs = append(faceIDs, cob.ID)
+	}
 
-func controlHandlerOnCancel(rest *restAPI, awVal *controlpanels.AwaitingImgVal, req *imgControlDoneReq) error {
-	rest.logger.Debug("cancelling img request")
-	return nil
+	// Inserting new image.
+	img := storages.Img{
+		ID:      uuid.Must(uuid.NewV4()).String(),
+		TS:      time.Now(),
+		Path:    rest.imgPath + "/" + awControl.UUID + ".jpg",
+		FaceIDs: faceIDs,
+	}
+	if err := rest.fStorage.InsertImgs([]storages.Img{img}); err != nil {
+		rest.logger.Error(errors.Wrap(err, "unable to insert image; partial commit possible"))
+		return
+	}
+
+	// Inserting new facial features vectors.
+	ffvs := make([]storages.FFV, 0, len(ffvsToInsert))
+	for i, ffv := range ffvsToInsert {
+		ffvs = append(ffvs, storages.FFV{
+			ID:                   uuid.Must(uuid.NewV4()).String(),
+			CobID:                faceIDs[i],
+			ImgID:                img.ID,
+			FaceBox:              fbsToInsert[i],
+			FacialFeaturesVector: ffv,
+		})
+	}
+	if err := rest.fStorage.InsertFFVs(ffvs); err != nil {
+		rest.logger.Error(errors.Wrap(err, "unable to insert ffvs; partial commit possible"))
+		return
+	}
+
+	rest.logger.Debugf("successfully inserted image with UUID \"%s\" to DB", awControl.UUID)
 }

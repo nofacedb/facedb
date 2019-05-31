@@ -13,10 +13,15 @@ import (
 	"time"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
-	"github.com/nofacedb/facedb/internal/controlpanels"
-	"github.com/nofacedb/facedb/internal/facedb"
-	"github.com/nofacedb/facedb/internal/facerecognition"
+	"github.com/nofacedb/facedb/internal/schedulers"
+	"github.com/nofacedb/facedb/internal/storages"
 	"github.com/pkg/errors"
+)
+
+const (
+	httpGetMethod  = "GET"
+	httpPostMethod = "POST"
+	httpPutMethod  = "PUT"
 )
 
 // HTTPServer struct contains all server configuration and work.
@@ -29,27 +34,32 @@ type HTTPServer struct {
 }
 
 // CreateHTTPServer creates new HTTPServer.
-func CreateHTTPServer(cfg *cfgparser.CFG,
-	frs *facerecognition.Scheduler,
-	cps *controlpanels.Scheduler,
-	fs *facedb.FaceStorage,
-	logger *log.Logger) (*HTTPServer, error) {
-	rest, err := createRestAPI(cfg, frs, cps, fs, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create rest API")
-	}
+func CreateHTTPServer(
+	cfg *cfgparser.CFG, srcAddr string,
+	frScheduler *schedulers.FaceRecognitionScheduler,
+	cpScheduler *schedulers.ControlPanelScheduler,
+	fStorage *storages.FaceStorage,
+	client *http.Client, logger *log.Logger) *HTTPServer {
+	rest := createRestAPI(
+		cfg, srcAddr, cfg.StorageCFG.ImgPath,
+		frScheduler, cpScheduler, fStorage,
+		client, logger)
 	return &HTTPServer{
 		rest: rest,
 		serv: &http.Server{
-			Addr:         cfg.HTTPServerCFG.Socket,
-			Handler:      rest.bindHandlers(),
-			WriteTimeout: time.Millisecond * time.Duration(cfg.HTTPServerCFG.WriteTimeoutMS),
-			ReadTimeout:  time.Millisecond * time.Duration(cfg.HTTPServerCFG.ReadTimeoutMS),
+			Addr: fmt.Sprintf("%s:%d",
+				cfg.HTTPServerCFG.Addr,
+				cfg.HTTPServerCFG.Port),
+			Handler: rest.bindHandlers(),
+			WriteTimeout: time.Millisecond *
+				time.Duration(cfg.HTTPServerCFG.WriteTimeoutMS),
+			ReadTimeout: time.Millisecond *
+				time.Duration(cfg.HTTPServerCFG.ReadTimeoutMS),
 		},
 		logger:  logger,
 		keyPath: cfg.HTTPServerCFG.KeyPath,
 		crtPath: cfg.HTTPServerCFG.CrtPath,
-	}, nil
+	}
 }
 
 // Run starts HTTPServer.

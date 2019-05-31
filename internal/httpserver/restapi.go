@@ -4,42 +4,52 @@ import (
 	"net/http"
 
 	"github.com/nofacedb/facedb/internal/cfgparser"
-	"github.com/nofacedb/facedb/internal/controlpanels"
-	"github.com/nofacedb/facedb/internal/facedb"
-	"github.com/nofacedb/facedb/internal/facerecognition"
+	"github.com/nofacedb/facedb/internal/schedulers"
+	"github.com/nofacedb/facedb/internal/storages"
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	apiBase             = `/api/v1`
+	apiPutImage         = apiBase + `/put_image`
+	apiPutFacesData     = apiBase + `/put_faces_data`
+	apiPutControl       = apiBase + `/put_control`
+	apiAddControlObject = apiBase + `/add_control_object`
+)
+
 type restAPI struct {
-	immedResp bool
-	srcAddr   string
-	frs       *facerecognition.Scheduler
-	cps       *controlpanels.Scheduler
-	fs        *facedb.FaceStorage
-	logger    *log.Logger
+	srcAddr     string
+	imgPath     string
+	frScheduler *schedulers.FaceRecognitionScheduler
+	cpScheduler *schedulers.ControlPanelScheduler
+	fStorage    *storages.FaceStorage
+	client      *http.Client
+	logger      *log.Logger
 }
 
 func createRestAPI(cfg *cfgparser.CFG,
-	frs *facerecognition.Scheduler,
-	cps *controlpanels.Scheduler,
-	fs *facedb.FaceStorage,
-	logger *log.Logger) (*restAPI, error) {
+	srcAddr, imgPath string,
+	frScheduler *schedulers.FaceRecognitionScheduler,
+	cpScheduler *schedulers.ControlPanelScheduler,
+	fStorage *storages.FaceStorage,
+	client *http.Client, logger *log.Logger) *restAPI {
 	return &restAPI{
-		immedResp: cfg.HTTPServerCFG.ImmedResp,
-		frs:       frs,
-		cps:       cps,
-		fs:        fs,
-		logger:    logger,
-	}, nil
+		srcAddr:     srcAddr,
+		imgPath:     imgPath,
+		frScheduler: frScheduler,
+		cpScheduler: cpScheduler,
+		fStorage:    fStorage,
+		client:      client,
+		logger:      logger,
+	}
 }
 
 func (rest *restAPI) bindHandlers() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc(apiV1PutImg, rest.putImgHandler)
-	mux.HandleFunc(apiV1PutFBs, rest.putFBsHandler)
-	mux.HandleFunc(apiV1PutFFs, rest.putFFsHandler)
-	mux.HandleFunc(apiV1PutControl, rest.putControlHandler)
-	mux.HandleFunc(apiV1AddFace, rest.addFaceHandler)
+	mux.HandleFunc(apiPutImage, rest.putImageHandler)
+	mux.HandleFunc(apiPutFacesData, rest.putFacesDataReqHandler)
+	mux.HandleFunc(apiPutControl, rest.putControlHandler)
+	mux.HandleFunc(apiAddControlObject, rest.addControlObjectHandler)
 
 	return mux
 }

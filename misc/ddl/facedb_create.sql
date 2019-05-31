@@ -5,14 +5,17 @@ CREATE DATABASE IF NOT EXISTS `facedb`;
 CREATE TABLE IF NOT EXISTS `facedb`.`control_objects`
 (
     `id`         UUID     DEFAULT generateUUIDv4(), -- surrogate key.
-    `db_ts`      DateTime DEFAULT now(),            -- internal (database) timestamp.
-    `ts`         DateTime DEFAULT now(),            -- external timestamp.
+    `db_ts`      DateTime DEFAULT now(),            -- internal  (database) timestamp.
+    `ts`         DateTime DEFAULT now(),            -- external  timestamp.
+    `passport`   String,                            -- natural   key.
+    `surname`    String   DEFAULT '-',
     `name`       String   DEFAULT '-',
     `patronymic` String   DEFAULT '-',
-    `surname`    String   DEFAULT '-',
-    `passport`   String,
-    `sex`        Enum8('male' = 0, 'female' = 1, 'unknown' = 2) DEFAULT 'unknown',
-    `phone_num`  String   DEFAULT '-'
+    `sex`        Enum8('male' = 0, 'female' = 1, '-' = 2) DEFAULT '-',
+    `birthdate`  String   DEFAULT '-',
+    `phone_num`  String   DEFAULT '-',
+    `email`      String   DEFAULT '-',
+    `address`    String   DEFAULT '-'
 ) ENGINE = ReplacingMergeTree(`db_ts`)
   ORDER BY `id`;
 
@@ -41,9 +44,9 @@ GROUP BY `cob_id`;
 -- imgs is a table for all saved images.
 CREATE TABLE IF NOT EXISTS `facedb`.`imgs`
 (
-    `id`       UUID DEFAULT generateUUIDv4(), -- surrogate key.
-    `ts`       DateTime,
+    `id`       UUID        DEFAULT generateUUIDv4(), -- surrogate key.
+    `ts`       DateTime    DEFAULT now(),
     `path`     String,
-    `face_ids` Array(UUID)                    -- facedb.facial_features FKs.
+    `face_ids` Array(UUID)                           -- facedb.facial_features FKs.
 ) ENGINE = MergeTree()
   ORDER BY `id`;

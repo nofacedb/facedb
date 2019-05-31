@@ -93,16 +93,16 @@
 			"revisionTime": "2019-01-09T06:16:28Z"
 		},
 		{
+			"checksumSHA1": "Tutue3nEgM/87jitUcYv6ODwyNE=",
+			"path": "github.com/satori/go.uuid",
+			"revision": "b2ce2384e17bbe0c6d34077efa39dbab3e09123b",
+			"revisionTime": "2018-10-28T12:50:25Z"
+		},
+		{
 			"checksumSHA1": "3EH6WFZ6eet+L973ovo471d8tEc=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "f0375eb5b588893ff556c71dee32d98e57a9b777",
 			"revisionTime": "2019-05-10T07:41:01Z"
-		},
-		{
-			"checksumSHA1": "cXokCvyFg5J/JpxYNKB5JSqJH7g=",
-			"path": "golang.org/x/image/bmp",
-			"revision": "6d32002ffd7577f23673706728e1c510698cecb1",
-			"revisionTime": "2019-04-28T16:51:35Z"
 		},
 		{
 			"checksumSHA1": "vrkWRvoGTTdPR5GENAlS+Z7CL0s=",

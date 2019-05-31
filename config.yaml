@@ -1,68 +1,44 @@
 http_server:
-  # name is a name, which will be sent as server name to other microservices.
-  name : "127.0.0.1:10000"
-  # server_addr is IP:PORT or path to UNIX socket
-  # on which server will listen.
-  socket : "0.0.0.0:10000"
-  # write_timeout is timeout for HTTP(S) write for addrs_in.
-  write_timeout_ms: 100000
-  # read_timeout is timeout for HTTP(S) read for addrs_in.
-  read_timeout_ms: 100000
-  # immed_resp specifies, if server should return answer only
-  # after image processed (false) or immediately (true).
-  immed_resp: true
-  # key_path is path to TLS key (if empty, server will use HTTP).
+  addr: "127.0.0.1"
+  port: 8080
+  write_timeout_ms: 10000
+  read_timeout_ms: 10000
   key_path: ""
-  # crt_path is path to TLS cert (if empty, server will use HTTP).
   crt_path: ""
 
-face_recognition:
-  # List of face processors IP:PORTs or paths to UNIX sockets.
-  face_processors:
-    - "http://127.0.0.1:8000"
-  # timeout_ms it timeout for HTTP(S) request to faceprocessor.
-  timeout_ms: 100000
+http_client:
+  timeout_ms: 10000
 
-face_storage:
-  # Address of ClickHouse database.
-  addr: "127.0.0.1:9000"
-  # ClickHouse user.
+storage:
+  addr: "127.0.0.1"
+  port: 9000
   user: "default"
-  # ClickHouse user password.
   passwd: "123456"
-  # n_ping is number of ping tries, when connecting to ClickHouse.
-  n_ping: 16
-  # default_db is default ClickHouse database.
+  max_pings: 16
   default_db: "facedb"
-  # write_timeout_s is timeout for ClickHouse write.
-  write_timeout_ms: 100000
-  # read_timeout_s is timeout for ClickHouse read.
-  read_timeout_ms: 100000
-  # debug sets ClickHouse debug mode to true.
-  debug: false
-  # sine_boundary is boundary value of facial features vector coincidence
-  sine_boundary: 0.1
-  # img_path is a path to folder with images.
+  write_timeout_ms: 10000
+  read_timeout_ms:  10000
   img_path: "/home/mikhail/Pictures/facedb"
+  debug: false
+  sine_boundary: 0.1
+
+face_recognizers:
+  face_recognizers:
+    - "http://127.0.0.1:8081"
+  aw_imgs_q_max_size: 128
+  aw_imgs_q_clean_ms: 180000
 
 control_panels:
-  # List on control panels IP:PORTs or paths to UNIX sockets
   control_panels:
-    - "http://127.0.0.1:11000"
+    - "http://127.0.0.1:9091"
+  aco_q_max_size: 128
+  aco_q_clean_ms: 180000
+  ac_q_max_size: 128
+  ac_q_clean_ms: 180000
 
 logger:
-  # "stdout" for writing logs to stdout;
-  # "stderr" for writing logs to stderr;
-  # "/some/directory/some/file" for writing logs to file;
-  # in the base filename you can use "%t" -
-  # current timestamp fmt;
   output: "stdout"
   use_colors: true
   use_timestamp: true
-  # format string for timestamp "%t" in base filename and
-  # in log output.
   timestamp_format: ""
-  # If you are sure that the size of a single log record
-  # does not exceed 4096 bytes on Unix (1024 bytes on Windows),
-  # then You can use non-blocking mode (it is faster).
-  non_blocking: true    
+  non_blocking: true
