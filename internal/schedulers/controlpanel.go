@@ -298,7 +298,7 @@ func (s *ControlPanelScheduler) SendNotifyControlReq(req *proto.NotifyControlReq
 func (s *ControlPanelScheduler) sendNotifyControlReqBroadCast(req *proto.NotifyControlReq) error {
 	data, err := json.Marshal(req)
 	if err != nil {
-		return errors.Wrap(err, "unable to marshal NotifyControlReq to JSON")
+		return errors.Wrap(err, "unable to marshal \"NotifyControlReq\" to JSON")
 	}
 
 	wg := sync.WaitGroup{}
@@ -309,12 +309,12 @@ func (s *ControlPanelScheduler) sendNotifyControlReqBroadCast(req *proto.NotifyC
 			defer wg.Done()
 			httpReq, err := http.NewRequest("PUT", url, bytes.NewReader(data))
 			if err != nil {
-				s.logger.Error(errors.Wrap(err, "unable to create NotifyControlReq HTTP request"))
+				s.logger.Error(errors.Wrap(err, "unable to create \"NotifyControlReq\" HTTP request"))
 				return
 			}
 			_, err = s.client.Do(httpReq)
 			if err != nil {
-				s.logger.Error(errors.Wrapf(err, "unable to send NotifyControlReq to controlpanel \"%s\"", url))
+				s.logger.Error(errors.Wrapf(err, "unable to send \"NotifyControlReq\" to controlpanel \"%s\"", url))
 			}
 			atomic.AddUint64(&wellDone, 1)
 		}(s.controlPanels[i] + cpsAPINotifyControl)
@@ -323,7 +323,7 @@ func (s *ControlPanelScheduler) sendNotifyControlReqBroadCast(req *proto.NotifyC
 	wg.Wait()
 
 	if wellDone == 0 {
-		return fmt.Errorf("unable to send any NotifyControlReq in broadcast mode")
+		return fmt.Errorf("unable to send any \"NotifyControlReq\" in broadcast mode")
 	}
 
 	return nil

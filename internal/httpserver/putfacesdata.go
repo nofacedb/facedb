@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -237,13 +238,39 @@ func processFacesDataReqOnAwCob(rest *restAPI, awCob *schedulers.AwaitingControl
 		ffvs = append(ffvs, ffv)
 	}
 
-	if err := rest.fStorage.InsertImgs(imgs); err != nil {
+	if err = rest.fStorage.InsertImgs(imgs); err != nil {
 		rest.logger.Error(errors.Wrap(err, "unable to insert images; partial commit possible"))
 		return
 	}
 
-	if err := rest.fStorage.InsertFFVs(ffvs); err != nil {
+	if err = rest.fStorage.InsertFFVs(ffvs); err != nil {
 		rest.logger.Error(errors.Wrap(err, "unable to insert ffvs; partial commit possible"))
 		return
 	}
+
+	rest.logger.Debugf("pushed \"AwaitingControlObject\" with UUID \"%s\" to ClickHouse DB", awCob.UUID)
+
+	req := proto.ImmedResp{
+		Header: proto.Header{
+			SrcAddr: rest.srcAddr,
+			UUID:    awCob.UUID,
+		},
+	}
+	url := awCob.SrcAddr + "/api/v1/notify_add_control_object"
+	data, err := json.Marshal(req)
+	if err != nil {
+		rest.logger.Warn(errors.Wrap(err, "unable to marshal \"NotifyAddControlObjectReq\" to JSON"))
+	}
+	httpReq, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+	if err != nil {
+		rest.logger.Error(errors.Wrap(err, "unable to create \"NotifyAddControlObjectReq\" HTTP request"))
+		return
+	}
+	_, err = rest.client.Do(httpReq)
+	if err != nil {
+		rest.logger.Error(errors.Wrapf(err, "unable to send \"NotifyAddControlObjectReq\" to controlpanel \"%s\"", url))
+	}
+
+	rest.logger.Debugf("notified controlpanel \"%s\" about inserting UUID \"%s\" to ClickHouse DB",
+		rest.srcAddr, awCob.UUID)
 }
