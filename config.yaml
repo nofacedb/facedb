@@ -25,6 +25,7 @@ storage:
 face_recognizers:
   face_recognizers:
     - "http://127.0.0.1:8081"
+    - "http://127.0.0.1:8082"
   aw_imgs_q_max_size: 128
   aw_imgs_q_clean_ms: 180000
 
