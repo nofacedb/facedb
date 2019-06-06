@@ -2,6 +2,8 @@ package storages
 
 import (
 	"database/sql"
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/kshvakov/clickhouse"
@@ -266,23 +268,34 @@ FROM
 ) JOIN
 (
     SELECT
-        cob_id, avgForEach(ff) AS eff
+        cob_id,
+        avg(cosine_on_ort) AS cosine_on_ort,
+        avgForEach(eff) AS eff
     FROM
-        facial_features
+        embedded_facial_features
     GROUP BY cob_id
 ) USING cob_id
 WHERE
-    ((1 - pow(arraySum(arrayMap((x, y) -> (x * y), eff, array(?))), 2) / 
-          (arraySum(arrayMap(x -> x * x, array(?))) *
-           arraySum(arrayMap(x -> x * x, eff)))) < ?)
+    (cosine_on_ort = ?) AND 
+    (arraySum(arrayMap((x, y) -> (x * y), eff, array(?))) / 
+     (sqrt(arraySum(arrayMap(x -> x * x, array(?)))) *
+      sqrt(arraySum(arrayMap(x -> x * x, eff)))) >= ?)
     LIMIT 1
 `
 
 // SelectControlObjectByFFV ...
-func (fs *FaceStorage) SelectControlObjectByFFV(ff []float64) (*proto.ControlObject, error) {
+func (fs *FaceStorage) SelectControlObjectByFFV(ff proto.FacialFeaturesVector) (*proto.ControlObject, error) {
+	ffSum := 0.0
+	ffLen := 0.0
+	for i := 0; i < len(ff); i++ {
+		ffSum += ff[i]
+		ffLen += ff[i] * ff[i]
+	}
+	cosineOnOrt := int8(ffSum / (math.Sqrt(ffLen) * math.Sqrt(128.0)) * 10.0)
+	fmt.Println(cosineOnOrt)
 	rows, err := fs.db.Query(SelectControlObjectByFFVQuery,
-		clickhouse.Array(ff),
-		clickhouse.Array(ff),
+		cosineOnOrt,
+		clickhouse.Array(ff), clickhouse.Array(ff),
 		fs.sineBoundary,
 	)
 	if err != nil {

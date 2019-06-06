@@ -61,7 +61,7 @@ type StorageCFG struct {
 	ReadTimeoutMS  int     `yaml:"read_timeout_ms"`
 	ImgPath        string  `yaml:"img_path"`
 	Debug          bool    `yaml:"debug"`
-	SineBoundary   float64 `yaml:"sine_boundary"`
+	CosineBoundary float64 `yaml:"cosine_boundary"`
 }
 
 // FaceRecognizersCFG contains config for face recognition engine.

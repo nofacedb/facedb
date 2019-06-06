@@ -37,9 +37,13 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS  `facedb`.`embedded_facial_features`
 ENGINE = AggregatingMergeTree() ORDER BY `cob_id`
 AS SELECT
    `cob_id`,
-   avgForEach(`ff`) AS `eff`
+   avgForEach(`ff`) AS `eff`,
+   toInt8(arraySum(`eff`) /
+    (sqrt(arraySum(arrayMap(x -> x * x, `eff`))) *
+    sqrt(128.0)) * 10.0) AS `cosine_on_ort`
 FROM `facedb`.`facial_features`
-GROUP BY `cob_id`;
+GROUP BY `cob_id`
+ORDER BY `cosine_on_ort` ASC, `cob_id` ASC;
 
 -- imgs is a table for all saved images.
 CREATE TABLE IF NOT EXISTS `facedb`.`imgs`

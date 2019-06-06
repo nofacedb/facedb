@@ -52,7 +52,7 @@ func main() {
 	defer db.Close()
 
 	logger.Debug("initializing FACE STORAGE...")
-	fStorage := storages.CreateFaceStorage(db, cfg.StorageCFG.SineBoundary)
+	fStorage := storages.CreateFaceStorage(db, cfg.StorageCFG.CosineBoundary)
 	logger.Debug("FACE STORAGE was successfully initialized")
 
 	srcAddr := createSrcAddr(cfg)

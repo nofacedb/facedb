@@ -20,7 +20,7 @@ storage:
   read_timeout_ms:  10000
   img_path: "/home/mikhail/Pictures/facedb"
   debug: false
-  sine_boundary: 0.1
+  cosine_boundary: 0.95
 
 face_recognizers:
   face_recognizers:
